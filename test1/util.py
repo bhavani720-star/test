@@ -1,1388 +1,2551 @@
 from __future__ import annotations
 
 import copy
-import datetime
-import decimal
-import importlib
-import inspect
-import json
+import locale
 import logging
 import os
-import pathlib
+import platform
+import random
 import re
-import sys
+import string
 import time
-import uuid
-from collections import OrderedDict
-from enum import Enum
-from functools import wraps
-from inspect import (
-    BoundArguments,
-    signature,
-    stack,
-)
-from numbers import Number
-from pathlib import Path
+import traceback
+from decimal import Decimal
+from functools import partial, wraps
+from logging import Logger
 from types import ModuleType
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
+    Iterable,
     List,
-    Literal,
     Optional,
-    Set,
-    SupportsFloat,
     Tuple,
+    Type,
+    TypeVar,
     Union,
     cast,
-    overload,
 )
 
 import numpy as np
 import pandas as pd
 from dateutil.parser import parse
-from packaging import version
+from typing_extensions import ParamSpec
 
-from great_expectations.compatibility import pydantic, pyspark, sqlalchemy
-from great_expectations.compatibility.sqlalchemy import LegacyRow, Row
-from great_expectations.compatibility.sqlalchemy import sqlalchemy as sa
-from great_expectations.compatibility.typing_extensions import override
-
-# import of private class will be removed when deprecated methods are removed from this module
-from great_expectations.exceptions import (
-    InvalidExpectationConfigurationError,
-    PluginClassNotFoundError,
-    PluginModuleNotFoundError,
+import great_expectations as gx
+import great_expectations.compatibility.bigquery as BigQueryDialect
+from great_expectations.compatibility import aws, pyspark, snowflake, sqlalchemy, trino
+from great_expectations.compatibility.pandas_compatibility import (
+    execute_pandas_to_datetime,
 )
-from great_expectations.render import RenderedContent
-from great_expectations.types import SerializableDictDot
-from great_expectations.types.base import SerializableDotDict
+from great_expectations.compatibility.postgresql import resolve_postgresql_driver
+from great_expectations.compatibility.sqlalchemy import (
+    sqlalchemy as sa,
+)
+from great_expectations.compatibility.sqlalchemy_compatibility_wrappers import (
+    add_dataframe_to_db,
+)
+from great_expectations.core import (
+    ExpectationSuite,
+    ExpectationSuiteSchema,
+    ExpectationSuiteValidationResultSchema,
+    ExpectationValidationResultSchema,
+)
+from great_expectations.core.batch import Batch, LegacyBatchDefinition
+from great_expectations.core.util import (
+    get_sql_dialect_floating_point_infinity_value,
+)
+from great_expectations.datasource.fluent.batch_identifier_util import make_batch_identifier
+from great_expectations.exceptions.exceptions import (
+    ExecutionEngineError,
+    InvalidExpectationConfigurationError,
+    MetricProviderError,
+    MetricResolutionError,
+)
+from great_expectations.execution_engine import (
+    PandasExecutionEngine,
+    SparkDFExecutionEngine,
+    SqlAlchemyExecutionEngine,
+)
+from great_expectations.execution_engine.sqlalchemy_batch_data import (
+    SqlAlchemyBatchData,
+)
+from great_expectations.execution_engine.sqlalchemy_engine_lifecycle import (
+    close_connections_when_collected,
+)
+from great_expectations.execution_engine.sqlite_execution_engine import SqliteExecutionEngine
+from great_expectations.expectations.expectation_configuration import (
+    ExpectationConfigurationSchema,
+)
+from great_expectations.self_check.sqlalchemy_connection_manager import (
+    LockingConnectionCheck,
+)
+from great_expectations.util import (
+    import_library_module,
+)
+from great_expectations.validator.validator import Validator
+
+SQLAlchemyError = sqlalchemy.SQLAlchemyError
 
 if TYPE_CHECKING:
-    # needed until numpy min version 1.20
-    import numpy.typing as npt
-    from ruamel.yaml.comments import CommentedMap
-    from typing_extensions import TypeAlias, TypeGuard
+    from great_expectations.core.expectation_diagnostics.expectation_test_data_cases import (
+        ExpectationTestCase,
+        ExpectationTestDataCases,
+    )
+    from great_expectations.core.expectation_diagnostics.supporting_types import (
+        ExpectationExecutionEngineDiagnostics,
+    )
+    from great_expectations.data_context import AbstractDataContext
+    from great_expectations.types.connect_args import ConnectArgs
 
-    from great_expectations.alias_types import JSONValues, PathStr
+P = ParamSpec("P")
+T = TypeVar("T")
 
+expectationValidationResultSchema = ExpectationValidationResultSchema()
+expectationSuiteValidationResultSchema = ExpectationSuiteValidationResultSchema()
+expectationConfigurationSchema = ExpectationConfigurationSchema()
+expectationSuiteSchema = ExpectationSuiteSchema()
 
-try:
-    from shapely.geometry import LineString, MultiPolygon, Point, Polygon
-except ImportError:
-    Point = None  # type: ignore[misc,assignment]
-    Polygon = None  # type: ignore[misc,assignment]
-    MultiPolygon = None  # type: ignore[misc,assignment]
-    LineString = None  # type: ignore[misc,assignment]
-
+# mysql and SQL Server allow table names to be a maximum of 128 characters
+# for postgres it is 63.
+MAX_TABLE_NAME_LENGTH: int = 63
 
 logger = logging.getLogger(__name__)
 
-
-p1 = re.compile(r"(.)([A-Z][a-z]+)")
-p2 = re.compile(r"([a-z0-9])([A-Z])")
-
-
-class bidict(dict):
-    """
-    Bi-directional hashmap: https://stackoverflow.com/a/21894086
-    """
-
-    def __init__(self, *args: List[Any], **kwargs: Dict[str, Any]) -> None:
-        super().__init__(*args, **kwargs)
-        self.inverse: Dict = {}
-        for key, value in self.items():
-            self.inverse.setdefault(value, []).append(key)
-
-    @override
-    def __setitem__(self, key: str, value: Any) -> None:
-        if key in self:
-            self.inverse[self[key]].remove(key)
-        super().__setitem__(key, value)
-        self.inverse.setdefault(value, []).append(key)
-
-    @override
-    def __delitem__(self, key: str):
-        self.inverse.setdefault(self[key], []).remove(key)
-        if self[key] in self.inverse and not self.inverse[self[key]]:
-            del self.inverse[self[key]]
-        super().__delitem__(key)
+if sqlalchemy.sqlite:
+    SQLITE_TYPES = {
+        "VARCHAR": sqlalchemy.sqlite.VARCHAR,
+        "CHAR": sqlalchemy.sqlite.CHAR,
+        "INTEGER": sqlalchemy.sqlite.INTEGER,
+        "SMALLINT": sqlalchemy.sqlite.SMALLINT,
+        "DATETIME": sqlalchemy.sqlite.DATETIME(truncate_microseconds=True),
+        "DATE": sqlalchemy.sqlite.DATE,
+        "FLOAT": sqlalchemy.sqlite.FLOAT,
+        "BOOLEAN": sqlalchemy.sqlite.BOOLEAN,
+        "TIMESTAMP": sqlalchemy.sqlite.TIMESTAMP,
+    }
+else:
+    SQLITE_TYPES = {}
 
 
-def camel_to_snake(name: str) -> str:
-    name = p1.sub(r"\1_\2", name)
-    return p2.sub(r"\1_\2", name).lower()
+from great_expectations.compatibility.bigquery import (
+    GEOGRAPHY,
+    sqlalchemy_bigquery,
+)
 
+try:
+    BIGQUERY_TYPES = {
+        "INTEGER": sqlalchemy_bigquery.INTEGER,
+        "NUMERIC": sqlalchemy_bigquery.NUMERIC,
+        "STRING": sqlalchemy_bigquery.STRING,
+        "BIGNUMERIC": sqlalchemy_bigquery.BIGNUMERIC,
+        "BYTES": sqlalchemy_bigquery.BYTES,
+        "BOOL": sqlalchemy_bigquery.BOOL,
+        "BOOLEAN": sqlalchemy_bigquery.BOOLEAN,
+        "TIMESTAMP": sqlalchemy_bigquery.TIMESTAMP,
+        "TIME": sqlalchemy_bigquery.TIME,
+        "FLOAT": sqlalchemy_bigquery.FLOAT,
+        "DATE": sqlalchemy_bigquery.DATE,
+        "DATETIME": sqlalchemy_bigquery.DATETIME,
+    }
 
-def hyphen(txt: str):
-    return txt.replace("_", "-")
+    if GEOGRAPHY:
+        BIGQUERY_TYPES["GEOGRAPHY"] = GEOGRAPHY
 
+except (ImportError, AttributeError):
+    BIGQUERY_TYPES = {}
 
-def measure_execution_time(
-    execution_time_holder_object_reference_name: str = "execution_time_holder",
-    execution_time_property_name: str = "execution_time",
-    method: str = "process_time",
-    pretty_print: bool = True,
-    include_arguments: bool = True,
-) -> Callable:
-    """
-    Parameterizes template "execution_time_decorator" function with options, supplied as arguments.
+try:
+    import sqlalchemy.dialects.postgresql as postgresqltypes  # noqa: TID251 # FIXME CoP
 
-    Args:
-        execution_time_holder_object_reference_name: Handle, provided in "kwargs", holds execution time property setter.
-        execution_time_property_name: Property attribute name, provided in "kwargs", sets execution time value.
-        method: Name of method in "time" module (default: "process_time") to be used for recording timestamps.
-        pretty_print: If True (default), prints execution time summary to standard output; if False, "silent" mode.
-        include_arguments: If True (default), prints arguments of function, whose execution time is measured.
+    # noinspection PyPep8Naming
+    from sqlalchemy.dialects.postgresql import dialect as pgDialect  # noqa: TID251 # FIXME CoP
 
-    Note: Method "time.perf_counter()" keeps going during sleep, while method "time.process_time()" does not.
-    Using "time.process_time()" is the better suited method for measuring code computational efficiency.
+    POSTGRESQL_TYPES = {
+        "TEXT": postgresqltypes.TEXT,
+        "CHAR": postgresqltypes.CHAR,
+        "INTEGER": postgresqltypes.INTEGER,
+        "SMALLINT": postgresqltypes.SMALLINT,
+        "BIGINT": postgresqltypes.BIGINT,
+        "TIMESTAMP": postgresqltypes.TIMESTAMP,
+        "DATE": postgresqltypes.DATE,
+        "DOUBLE_PRECISION": postgresqltypes.DOUBLE_PRECISION,
+        "BOOLEAN": postgresqltypes.BOOLEAN,
+        "NUMERIC": postgresqltypes.NUMERIC,
+    }
+except (ImportError, KeyError):
+    postgresqltypes = None  # type: ignore[assignment] # FIXME CoP
+    pgDialect = None  # type: ignore[assignment] # FIXME CoP
+    POSTGRESQL_TYPES = {}
 
-    Returns:
-        Callable -- configured "execution_time_decorator" function.
-    """  # noqa: E501 # FIXME CoP
+try:
+    import sqlalchemy.dialects.mysql as mysqltypes  # noqa: TID251 # FIXME CoP
 
-    def execution_time_decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def compute_delta_t(*args, **kwargs) -> Any:
-            """
-            Computes return value of decorated function, calls back "execution_time_holder_object_reference_name", and
-            saves execution time (in seconds) into specified "execution_time_property_name" of passed object reference.
-            Settable "{execution_time_holder_object_reference_name}.{execution_time_property_name}" property must exist.
+    # noinspection PyPep8Naming
+    from sqlalchemy.dialects.mysql import dialect as mysqlDialect  # noqa: TID251 # FIXME CoP
 
-            Args:
-                args: Positional arguments of original function being decorated.
-                kwargs: Keyword arguments of original function being decorated.
+    MYSQL_TYPES = {
+        "TEXT": mysqltypes.TEXT,
+        "CHAR": mysqltypes.CHAR,
+        "INTEGER": mysqltypes.INTEGER,
+        "SMALLINT": mysqltypes.SMALLINT,
+        "BIGINT": mysqltypes.BIGINT,
+        "DATETIME": mysqltypes.DATETIME,
+        "TIMESTAMP": mysqltypes.TIMESTAMP,
+        "DATE": mysqltypes.DATE,
+        "FLOAT": mysqltypes.FLOAT,
+        "DOUBLE": mysqltypes.DOUBLE,
+        "BOOLEAN": mysqltypes.BOOLEAN,
+        "TINYINT": mysqltypes.TINYINT,
+    }
+except (ImportError, KeyError):
+    mysqltypes = None  # type: ignore[assignment] # FIXME CoP
+    mysqlDialect = None  # type: ignore[assignment] # FIXME CoP
+    MYSQL_TYPES = {}
 
-            Returns:
-                Any (output value of original function being decorated).
-            """  # noqa: E501 # FIXME CoP
-            time_begin: float = (getattr(time, method))()
-            try:
-                return func(*args, **kwargs)
-            finally:
-                time_end: float = (getattr(time, method))()
-                delta_t: float = time_end - time_begin
-                if kwargs is None:
-                    kwargs = {}
+try:
+    # SQLAlchemy does not export the "INT" type for the MS SQL Server dialect; however "INT" is supported by the engine.  # noqa: E501 # FIXME CoP
+    # Since SQLAlchemy exports the "INTEGER" type for the MS SQL Server dialect, alias "INT" to the "INTEGER" type.  # noqa: E501 # FIXME CoP
+    import sqlalchemy.dialects.mssql as sql_server_types  # noqa: TID251 # FIXME CoP
 
-                execution_time_holder: type = kwargs.get(  # type: ignore[assignment] # FIXME CoP
-                    execution_time_holder_object_reference_name
-                )
-                if execution_time_holder is not None and hasattr(
-                    execution_time_holder, execution_time_property_name
-                ):
-                    setattr(execution_time_holder, execution_time_property_name, delta_t)
-
-                if pretty_print:
-                    if include_arguments:
-                        bound_args: BoundArguments = signature(func).bind(*args, **kwargs)
-                        call_args: OrderedDict = bound_args.arguments
-                        print(
-                            f"""Total execution time of function {func.__name__}({dict(call_args)!s}): {delta_t} \
-seconds."""  # noqa: E501 # FIXME CoP
-                        )
-                    else:
-                        print(
-                            f"Total execution time of function {func.__name__}(): {delta_t} seconds."  # noqa: E501 # FIXME CoP
-                        )
-
-        return compute_delta_t
-
-    return execution_time_decorator
-
-
-def verify_dynamic_loading_support(module_name: str, package_name: Optional[str] = None) -> None:
-    """
-    :param module_name: a possibly-relative name of a module
-    :param package_name: the name of a package, to which the given module belongs
-    """
-    # noinspection PyUnresolvedReferences
-    module_spec: Optional[importlib.machinery.ModuleSpec]
-    try:
-        # noinspection PyUnresolvedReferences
-        module_spec = importlib.util.find_spec(module_name, package=package_name)
-    except ModuleNotFoundError:
-        module_spec = None
-
-    if not module_spec:
-        if not package_name:
-            package_name = ""
-
-        message: str = f"""No module named "{package_name + module_name}" could be found in the repository. Please \
-make sure that the file, corresponding to this package and module, exists and that dynamic loading of code modules, \
-templates, and assets is supported in your execution environment.  This error is unrecoverable.
-        """  # noqa: E501 # FIXME CoP
-        raise FileNotFoundError(message)
-
-
-def import_library_module(module_name: str) -> Optional[ModuleType]:
-    """
-    :param module_name: a fully-qualified name of a module (e.g., "great_expectations.dataset.sqlalchemy_dataset")
-    :return: raw source code of the module (if can be retrieved)
-    """  # noqa: E501 # FIXME CoP
-    module_obj: Optional[ModuleType]
+    # noinspection PyPep8Naming
+    from sqlalchemy.dialects.mssql import dialect as sql_server_dialect  # noqa: TID251 # FIXME CoP
 
     try:
-        module_obj = importlib.import_module(module_name)
-    except ImportError:
-        module_obj = None
-
-    return module_obj
-
-
-def is_library_loadable(library_name: str) -> bool:
-    module_obj: Optional[ModuleType] = import_library_module(module_name=library_name)
-    return module_obj is not None
-
-
-def load_class(class_name: str, module_name: str) -> type:
-    if class_name is None:
-        raise TypeError("class_name must not be None")  # noqa: TRY003 # FIXME CoP
-    if not isinstance(class_name, str):
-        raise TypeError("class_name must be a string")  # noqa: TRY003 # FIXME CoP
-    if module_name is None:
-        raise TypeError("module_name must not be None")  # noqa: TRY003 # FIXME CoP
-    if not isinstance(module_name, str):
-        raise TypeError("module_name must be a string")  # noqa: TRY003 # FIXME CoP
-    try:
-        verify_dynamic_loading_support(module_name=module_name)
-    except FileNotFoundError:
-        raise PluginModuleNotFoundError(module_name)
-
-    module_obj: Optional[ModuleType] = import_library_module(module_name=module_name)
-
-    if module_obj is None:
-        raise PluginModuleNotFoundError(module_name)
-
-    try:
-        klass_ = getattr(module_obj, class_name)
+        sql_server_types.INT  # type: ignore[attr-defined] # noqa: B018 # reassigning if attr not found
     except AttributeError:
-        raise PluginClassNotFoundError(module_name=module_name, class_name=class_name)
-
-    return klass_
-
-
-# https://stackoverflow.com/questions/9727673/list-directory-tree-structure-in-python
-def gen_directory_tree_str(startpath: PathStr):
-    """Print the structure of directory as a tree:
-
-    Ex:
-    project_dir0/
-        AAA/
-        BBB/
-            aaa.txt
-            bbb.txt
-
-    #Note: files and directories are sorted alphabetically, so that this method can be used for testing.
-    """  # noqa: E501 # FIXME CoP
-
-    output_str = ""
-
-    tuples = list(os.walk(startpath))
-    tuples.sort()
-
-    for root, dirs, files in tuples:
-        level = root.replace(str(startpath), "").count(os.sep)
-        indent = " " * 4 * level
-        output_str += f"{indent}{os.path.basename(root)}/\n"  # noqa: PTH119 # FIXME CoP
-        subindent = " " * 4 * (level + 1)
-
-        files.sort()
-        for f in files:
-            output_str += f"{subindent}{f}\n"
-
-    return output_str
-
-
-def filter_properties_dict(  # noqa: C901, PLR0912, PLR0913 # FIXME CoP
-    properties: Optional[dict] = None,
-    keep_fields: Optional[Set[str]] = None,
-    delete_fields: Optional[Set[str]] = None,
-    clean_nulls: bool = True,
-    clean_falsy: bool = False,
-    keep_falsy_numerics: bool = True,
-    inplace: bool = False,
-) -> Optional[dict]:
-    """Filter the entries of the source dictionary according to directives concerning the existing keys and values.
-
-    Args:
-        properties: source dictionary to be filtered according to the supplied filtering directives
-        keep_fields: list of keys that must be retained, with the understanding that all other entries will be deleted
-        delete_fields: list of keys that must be deleted, with the understanding that all other entries will be retained
-        clean_nulls: If True, then in addition to other filtering directives, delete entries, whose values are None
-        clean_falsy: If True, then in addition to other filtering directives, delete entries, whose values are Falsy
-        (If the "clean_falsy" argument is specified as "True", then "clean_nulls" is assumed to be "True" as well.)
-        inplace: If True, then modify the source properties dictionary; otherwise, make a copy for filtering purposes
-        keep_falsy_numerics: If True, then in addition to other filtering directives, do not delete zero-valued numerics
-
-    Returns:
-        The (possibly) filtered properties dictionary (or None if no entries remain after filtering is performed)
-    """  # noqa: E501 # FIXME CoP
-    if keep_fields is None:
-        keep_fields = set()
-
-    if delete_fields is None:
-        delete_fields = set()
-
-    if keep_fields & delete_fields:
-        raise ValueError(  # noqa: TRY003 # FIXME CoP
-            "Common keys between sets of keep_fields and delete_fields filtering directives are illegal."  # noqa: E501 # FIXME CoP
-        )
-
-    if clean_falsy:
-        clean_nulls = True
-
-    if properties is None:
-        properties = {}
-
-    if not isinstance(properties, dict):
-        raise ValueError(  # noqa: TRY003, TRY004 # FIXME CoP
-            f'Source "properties" must be a dictionary (illegal type "{type(properties)!s}" detected).'  # noqa: E501 # FIXME CoP
-        )
-
-    if not inplace:
-        properties = copy.deepcopy(properties)
-
-    keys_for_deletion: list = []
-
-    key: str
-    value: Any
-
-    if keep_fields:
-        keys_for_deletion.extend(
-            [key for key, value in properties.items() if key not in keep_fields]
-        )
-
-    if delete_fields:
-        keys_for_deletion.extend([key for key, value in properties.items() if key in delete_fields])
-
-    if clean_nulls:
-        keys_for_deletion.extend(
-            [
-                key
-                for key, value in properties.items()
-                if not (
-                    (keep_fields and key in keep_fields)
-                    or (delete_fields and key in delete_fields)
-                    or value is not None
-                )
-            ]
-        )
-
-    if clean_falsy:
-        if keep_falsy_numerics:
-            keys_for_deletion.extend(
-                [
-                    key
-                    for key, value in properties.items()
-                    if not (
-                        (keep_fields and key in keep_fields)
-                        or (delete_fields and key in delete_fields)
-                        or is_truthy(value=value)
-                        or is_numeric(value=value)
-                    )
-                ]
-            )
-        else:
-            keys_for_deletion.extend(
-                [
-                    key
-                    for key, value in properties.items()
-                    if not (
-                        (keep_fields and key in keep_fields)
-                        or (delete_fields and key in delete_fields)
-                        or is_truthy(value=value)
-                    )
-                ]
-            )
-
-    keys_for_deletion = list(set(keys_for_deletion))
-
-    for key in keys_for_deletion:
-        del properties[key]
-
-    if inplace:
-        return None
-
-    return properties
-
-
-@overload
-def deep_filter_properties_iterable(
-    properties: dict,
-    keep_fields: Optional[Set[str]] = ...,
-    delete_fields: Optional[Set[str]] = ...,
-    clean_nulls: bool = ...,
-    clean_falsy: bool = ...,
-    keep_falsy_numerics: bool = ...,
-    inplace: bool = ...,
-) -> dict: ...
-
-
-@overload
-def deep_filter_properties_iterable(
-    properties: list,
-    keep_fields: Optional[Set[str]] = ...,
-    delete_fields: Optional[Set[str]] = ...,
-    clean_nulls: bool = ...,
-    clean_falsy: bool = ...,
-    keep_falsy_numerics: bool = ...,
-    inplace: bool = ...,
-) -> list: ...
-
-
-@overload
-def deep_filter_properties_iterable(
-    properties: set,
-    keep_fields: Optional[Set[str]] = ...,
-    delete_fields: Optional[Set[str]] = ...,
-    clean_nulls: bool = ...,
-    clean_falsy: bool = ...,
-    keep_falsy_numerics: bool = ...,
-    inplace: bool = ...,
-) -> set: ...
-
-
-@overload
-def deep_filter_properties_iterable(
-    properties: tuple,
-    keep_fields: Optional[Set[str]] = ...,
-    delete_fields: Optional[Set[str]] = ...,
-    clean_nulls: bool = ...,
-    clean_falsy: bool = ...,
-    keep_falsy_numerics: bool = ...,
-    inplace: bool = ...,
-) -> tuple: ...
-
-
-@overload
-def deep_filter_properties_iterable(
-    properties: None,
-    keep_fields: Optional[Set[str]] = ...,
-    delete_fields: Optional[Set[str]] = ...,
-    clean_nulls: bool = ...,
-    clean_falsy: bool = ...,
-    keep_falsy_numerics: bool = ...,
-    inplace: bool = ...,
-) -> None: ...
-
-
-def deep_filter_properties_iterable(  # noqa: C901, PLR0913 # FIXME CoP
-    properties: Union[dict, list, set, tuple, None] = None,
-    keep_fields: Optional[Set[str]] = None,
-    delete_fields: Optional[Set[str]] = None,
-    clean_nulls: bool = True,
-    clean_falsy: bool = False,
-    keep_falsy_numerics: bool = True,
-    inplace: bool = False,
-) -> Union[dict, list, set, tuple, None]:
-    if keep_fields is None:
-        keep_fields = set()
-
-    if delete_fields is None:
-        delete_fields = set()
-
-    if isinstance(properties, dict):
-        if not inplace:
-            properties = copy.deepcopy(properties)
-
-        filter_properties_dict(
-            properties=properties,
-            keep_fields=keep_fields,
-            delete_fields=delete_fields,
-            clean_nulls=clean_nulls,
-            clean_falsy=clean_falsy,
-            keep_falsy_numerics=keep_falsy_numerics,
-            inplace=True,
-        )
-
-        key: str
-        value: Any
-        for key, value in properties.items():
-            deep_filter_properties_iterable(
-                properties=value,
-                keep_fields=keep_fields,
-                delete_fields=delete_fields,
-                clean_nulls=clean_nulls,
-                clean_falsy=clean_falsy,
-                keep_falsy_numerics=keep_falsy_numerics,
-                inplace=True,
-            )
-
-        # Upon unwinding the call stack, do a sanity check to ensure cleaned properties.
-        keys_to_delete: List[str] = list(
-            filter(
-                lambda k: (  # type: ignore[arg-type]
-                    k not in keep_fields  # FIXME CoP
-                    and _is_to_be_removed_from_deep_filter_properties_iterable(
-                        value=properties[k],
-                        clean_nulls=clean_nulls,
-                        clean_falsy=clean_falsy,
-                        keep_falsy_numerics=keep_falsy_numerics,
-                    )
-                ),
-                properties.keys(),
-            )
-        )
-        for key in keys_to_delete:
-            properties.pop(key)
-
-    elif isinstance(properties, (list, set, tuple)):
-        if not inplace:
-            properties = copy.deepcopy(properties)
-
-        for value in properties:
-            deep_filter_properties_iterable(
-                properties=value,
-                keep_fields=keep_fields,
-                delete_fields=delete_fields,
-                clean_nulls=clean_nulls,
-                clean_falsy=clean_falsy,
-                keep_falsy_numerics=keep_falsy_numerics,
-                inplace=True,
-            )
-
-        # Upon unwinding the call stack, do a sanity check to ensure cleaned properties.
-        properties_type: type = type(properties)
-        properties = properties_type(
-            filter(
-                lambda v: (
-                    not _is_to_be_removed_from_deep_filter_properties_iterable(
-                        value=v,
-                        clean_nulls=clean_nulls,
-                        clean_falsy=clean_falsy,
-                        keep_falsy_numerics=keep_falsy_numerics,
-                    )
-                ),
-                properties,
-            )
-        )
-
-    if inplace:
-        return None
-
-    return properties
-
-
-def _is_to_be_removed_from_deep_filter_properties_iterable(
-    value: Any, clean_nulls: bool, clean_falsy: bool, keep_falsy_numerics: bool
-) -> bool:
-    conditions: Tuple[bool, ...] = (
-        clean_nulls and value is None,
-        not keep_falsy_numerics and is_numeric(value) and value == 0,
-        clean_falsy and not (is_numeric(value) or value),
-    )
-    return any(condition for condition in conditions)
-
-
-def is_truthy(value: Any) -> bool:
-    try:
-        return bool(value)
-    except ValueError:
-        return False
-
-
-def is_numeric(value: Any) -> bool:
-    return value is not None and (is_int(value=value) or is_float(value=value))
-
-
-def is_int(value: Any) -> bool:
-    try:
-        int(value)
-    except (TypeError, ValueError):
-        return False
-    return True
-
-
-def is_float(value: Any) -> bool:
-    try:
-        float(value)
-    except (TypeError, ValueError):
-        return False
-    return True
-
-
-def is_nan(value: Any) -> bool:
-    """
-    If value is an array, test element-wise for NaN and return result as a boolean array.
-    If value is a scalar, return boolean.
-    Args:
-        value: The value to test
-
-    Returns:
-        The results of the test
-    """
-    import numpy as np
-
-    try:
-        return np.isnan(value)
-    except TypeError:
-        return True
-
-
-def convert_decimal_to_float(d: SupportsFloat) -> float:
-    """
-    This method convers "decimal.Decimal" to standard "float" type.
-    """
-    rule_based_profiler_call: bool = (
-        len(
-            list(
-                filter(
-                    lambda frame_info: (
-                        Path(frame_info.filename).name == "parameter_builder.py"
-                        and frame_info.function == "get_metrics"
-                    ),
-                    stack(),
-                )
-            )
-        )
-        > 0
-    )
-    if (
-        not rule_based_profiler_call
-        and isinstance(d, decimal.Decimal)
-        and requires_lossy_conversion(d=d)
-    ):
-        logger.warning(
-            f"Using lossy conversion for decimal {d} to float object to support serialization."
-        )
-
-    # noinspection PyTypeChecker
-    return float(d)
-
-
-def requires_lossy_conversion(d: decimal.Decimal) -> bool:
-    """
-    This method determines whether or not conversion from "decimal.Decimal" to standard "float" type cannot be lossless.
-    """  # noqa: E501 # FIXME CoP
-    # An infinity converts exactly to float("inf"), but the subtraction below would be
-    # Infinity - Infinity, which signals decimal.InvalidOperation instead of returning a bool.
-    if d.is_infinite():
-        return False
-    return d - decimal.Context(prec=sys.float_info.dig).create_decimal(d) != 0
-
-
-def isclose(
-    operand_a: Union[datetime.datetime, datetime.timedelta, Number],
-    operand_b: Union[datetime.datetime, datetime.timedelta, Number],
-    rtol: float = 1.0e-5,  # controls relative weight of "operand_b" (when its magnitude is large)
-    atol: float = 1.0e-8,  # controls absolute accuracy (based on floating point machine precision)
-    equal_nan: bool = False,
-) -> bool:
-    """
-    Checks whether or not two numbers (or timestamps) are approximately close to one another.
-
-    According to "https://numpy.org/doc/stable/reference/generated/numpy.isclose.html",
-        For finite values, isclose uses the following equation to test whether two floating point values are equivalent:
-        "absolute(a - b) <= (atol + rtol * absolute(b))".
-
-    This translates to:
-        "absolute(operand_a - operand_b) <= (atol + rtol * absolute(operand_b))", where "operand_a" is "target" quantity
-    under evaluation for being close to a "control" value, and "operand_b" serves as the "control" ("reference") value.
-
-    The values of the absolute tolerance ("atol") parameter is chosen as a sufficiently small constant for most floating
-    point machine representations (e.g., 1.0e-8), so that even if the "control" value is small in magnitude and "target"
-    and "control" are close in absolute value, then the accuracy of the assessment can still be high up to the precision
-    of the "atol" value (here, 8 digits as the default).  However, when the "control" value is large in magnitude, the
-    relative tolerance ("rtol") parameter carries a greater weight in the comparison assessment, because the acceptable
-    deviation between the two quantities can be relatively larger for them to be deemed as "close enough" in this case.
-    """  # noqa: E501 # FIXME CoP
-    if isinstance(operand_a, str) and isinstance(operand_b, str):
-        return operand_a == operand_b
-
-    if isinstance(operand_a, datetime.datetime) and isinstance(operand_b, datetime.datetime):
-        operand_a = operand_a.timestamp()  # type: ignore[assignment] # FIXME CoP
-        operand_b = operand_b.timestamp()  # type: ignore[assignment] # FIXME CoP
-    elif isinstance(operand_a, datetime.timedelta) and isinstance(operand_b, datetime.timedelta):
-        operand_a = operand_a.total_seconds()  # type: ignore[assignment] # FIXME CoP
-        operand_b = operand_b.total_seconds()  # type: ignore[assignment] # FIXME CoP
-
-    return cast(
-        "bool",
-        np.isclose(
-            a=np.float64(operand_a),  # type: ignore[arg-type] # FIXME CoP
-            b=np.float64(operand_b),  # type: ignore[arg-type] # FIXME CoP
-            rtol=rtol,
-            atol=atol,
-            equal_nan=equal_nan,
-        ),
+        sql_server_types.INT = sql_server_types.INTEGER  # type: ignore[attr-defined] # FIXME CoP
+
+    # noinspection PyUnresolvedReferences
+    SQL_SERVER_TYPES = {
+        "BIGINT": sql_server_types.BIGINT,
+        "BINARY": sql_server_types.BINARY,
+        "BIT": sql_server_types.BIT,
+        "CHAR": sql_server_types.CHAR,
+        "DATE": sql_server_types.DATE,
+        "DATETIME": sql_server_types.DATETIME,
+        "DATETIME2": sql_server_types.DATETIME2,
+        "DATETIMEOFFSET": sql_server_types.DATETIMEOFFSET,
+        "DECIMAL": sql_server_types.DECIMAL,
+        "FLOAT": sql_server_types.FLOAT,
+        "IMAGE": sql_server_types.IMAGE,
+        "INT": sql_server_types.INT,  # type: ignore[attr-defined] # FIXME CoP
+        "INTEGER": sql_server_types.INTEGER,
+        "MONEY": sql_server_types.MONEY,
+        "NCHAR": sql_server_types.NCHAR,
+        "NTEXT": sql_server_types.NTEXT,
+        "NUMERIC": sql_server_types.NUMERIC,
+        "NVARCHAR": sql_server_types.NVARCHAR,
+        "REAL": sql_server_types.REAL,
+        "SMALLDATETIME": sql_server_types.SMALLDATETIME,
+        "SMALLINT": sql_server_types.SMALLINT,
+        "SMALLMONEY": sql_server_types.SMALLMONEY,
+        "SQL_VARIANT": sql_server_types.SQL_VARIANT,
+        "TEXT": sql_server_types.TEXT,
+        "TIME": sql_server_types.TIME,
+        "TIMESTAMP": sql_server_types.TIMESTAMP,
+        "TINYINT": sql_server_types.TINYINT,
+        "UNIQUEIDENTIFIER": sql_server_types.UNIQUEIDENTIFIER,
+        "VARBINARY": sql_server_types.VARBINARY,
+        "VARCHAR": sql_server_types.VARCHAR,
+    }
+except (ImportError, KeyError):
+    sql_server_types = None  # type: ignore[assignment] # FIXME CoP
+    sql_server_dialect = None  # type: ignore[assignment] # FIXME CoP
+    SQL_SERVER_TYPES = {}
+
+
+try:
+    import clickhouse_sqlalchemy.types.common as clickhousetypes
+    from clickhouse_sqlalchemy.drivers.base import (
+        ClickHouseDialect as clickhouseDialect,
     )
 
-
-def is_candidate_subset_of_target(candidate: Any, target: Any) -> bool:
-    """
-    This method checks whether or not candidate object is subset of target object.
-    """
-    if isinstance(candidate, dict):
-        key: Any  # must be "hashable"
-        value: Any
-        return all(
-            key in target and is_candidate_subset_of_target(candidate=val, target=target[key])
-            for key, val in candidate.items()
-        )
-
-    if isinstance(candidate, (list, set, tuple)):
-        subitem: Any
-        superitem: Any
-        return all(
-            any(is_candidate_subset_of_target(subitem, superitem) for superitem in target)
-            for subitem in candidate
-        )
-
-    return candidate == target
-
-
-def is_parseable_date(value: Any, fuzzy: bool = False) -> bool:
-    try:
-        _ = parse(value, fuzzy=fuzzy)
-        return True
-    except (TypeError, ValueError):
-        try:
-            _ = datetime.datetime.fromisoformat(value)
-            return True
-        except (TypeError, ValueError):
-            return False
-
-
-def is_ndarray_datetime_dtype(
-    data: npt.NDArray, parse_strings_as_datetimes: bool = False, fuzzy: bool = False
-) -> bool:
-    """
-    Determine whether or not all elements of 1-D "np.ndarray" argument are "datetime.datetime" type objects.
-    """  # noqa: E501 # FIXME CoP
-    value: Any
-    result: bool = all(isinstance(value, datetime.datetime) for value in data)
-    return result or (
-        parse_strings_as_datetimes
-        and all(is_parseable_date(value=value, fuzzy=fuzzy) for value in data)
-    )
+    CLICKHOUSE_TYPES = {
+        "INT256": clickhousetypes.Int256,
+        "INT128": clickhousetypes.Int128,
+        "INT64": clickhousetypes.Int64,
+        "INT32": clickhousetypes.Int32,
+        "INT16": clickhousetypes.Int16,
+        "INT8": clickhousetypes.Int8,
+        "UINT256": clickhousetypes.UInt256,
+        "UINT128": clickhousetypes.UInt128,
+        "UINT64": clickhousetypes.UInt64,
+        "UINT32": clickhousetypes.UInt32,
+        "UINT16": clickhousetypes.UInt16,
+        "UINT8": clickhousetypes.UInt8,
+        "DATE": clickhousetypes.Date,
+        "DATETIME": clickhousetypes.DateTime,
+        "DATETIME64": clickhousetypes.DateTime64,
+        "FLOAT64": clickhousetypes.Float64,
+        "FLOAT32": clickhousetypes.Float32,
+        "DECIMAL": clickhousetypes.Decimal,
+        "STRING": clickhousetypes.String,
+        "BOOL": clickhousetypes.Boolean,
+        "BOOLEAN": clickhousetypes.Boolean,
+        "UUID": clickhousetypes.UUID,
+        "FIXEDSTRING": clickhousetypes.String,
+        "ENUM8": clickhousetypes.Enum8,
+        "ENUM16": clickhousetypes.Enum16,
+        "ARRAY": clickhousetypes.Array,
+        "NULLABLE": clickhousetypes.Nullable,
+        "LOWCARDINALITY": clickhousetypes.LowCardinality,
+        "TUPLE": clickhousetypes.Tuple,
+        "MAP": clickhousetypes.Map,
+    }
+except (ImportError, KeyError):
+    clickhouse = None
+    clickhousetypes = None
+    clickhouseDialect = None
+    CLICKHOUSE_TYPES = {}
 
 
-def convert_ndarray_to_datetime_dtype_best_effort(
-    data: npt.NDArray,
-    datetime_detected: bool = False,
-    parse_strings_as_datetimes: bool = False,
-    fuzzy: bool = False,
-) -> Tuple[bool, bool, npt.NDArray]:
-    """
-    Attempt to parse all elements of 1-D "np.ndarray" argument into "datetime.datetime" type objects.
+TRINO_TYPES: Dict[str, Any] = (
+    {
+        "BOOLEAN": trino.trinotypes._type_map["boolean"],
+        "TINYINT": trino.trinotypes._type_map["tinyint"],
+        "SMALLINT": trino.trinotypes._type_map["smallint"],
+        "INT": trino.trinotypes._type_map["int"],
+        "INTEGER": trino.trinotypes._type_map["integer"],
+        "BIGINT": trino.trinotypes._type_map["bigint"],
+        "REAL": trino.trinotypes._type_map["real"],
+        "DOUBLE": trino.trinotypes._type_map["double"],
+        "DECIMAL": trino.trinotypes._type_map["decimal"],
+        "VARCHAR": trino.trinotypes._type_map["varchar"],
+        "CHAR": trino.trinotypes._type_map["char"],
+        "VARBINARY": trino.trinotypes._type_map["varbinary"],
+        "JSON": trino.trinotypes._type_map["json"],
+        "DATE": trino.trinotypes._type_map["date"],
+        "TIME": trino.trinotypes._type_map["time"],
+        "TIMESTAMP": trino.trinotypes._type_map["timestamp"],
+    }
+    if trino.trinotypes
+    else {}
+)
 
-    Returns:
-        Boolean flag -- True if all elements of original "data" were "datetime.datetime" type objects; False, otherwise.
-        Boolean flag -- True, if conversion was performed; False, otherwise.
-        Output "np.ndarray" (converted, if necessary).
-    """  # noqa: E501 # FIXME CoP
-    if is_ndarray_datetime_dtype(data=data, parse_strings_as_datetimes=False, fuzzy=fuzzy):
-        return True, False, data
+REDSHIFT_TYPES: Dict[str, Any] = (
+    {
+        "BIGINT": aws.redshiftdialect.BIGINT,
+        "BOOLEAN": aws.redshiftdialect.BOOLEAN,
+        "CHAR": aws.redshiftdialect.CHAR,
+        "DATE": aws.redshiftdialect.DATE,
+        "DECIMAL": aws.redshiftdialect.DECIMAL,
+        "DOUBLE_PRECISION": aws.redshiftdialect.DOUBLE_PRECISION,
+        "FOREIGN_KEY_RE": aws.redshiftdialect.FOREIGN_KEY_RE,
+        "GEOMETRY": aws.redshiftdialect.GEOMETRY,
+        "INTEGER": aws.redshiftdialect.INTEGER,
+        "PRIMARY_KEY_RE": aws.redshiftdialect.PRIMARY_KEY_RE,
+        "REAL": aws.redshiftdialect.REAL,
+        "SMALLINT": aws.redshiftdialect.SMALLINT,
+        "TIMESTAMP": aws.redshiftdialect.TIMESTAMP,
+        "TIMESTAMPTZ": aws.redshiftdialect.TIMESTAMPTZ,
+        "TIMETZ": aws.redshiftdialect.TIMETZ,
+        "VARCHAR": aws.redshiftdialect.VARCHAR,
+    }
+    if aws.redshiftdialect
+    else {}
+)
 
-    value: Any
-    if datetime_detected or is_ndarray_datetime_dtype(
-        data=data, parse_strings_as_datetimes=parse_strings_as_datetimes, fuzzy=fuzzy
-    ):
-        try:
-            return (
-                False,
-                True,
-                np.asarray([parse(value, fuzzy=fuzzy) for value in data]),
-            )
-        except (TypeError, ValueError):
-            pass
+SNOWFLAKE_TYPES: Dict[str, Any]
+if snowflake.snowflakesqlalchemy and snowflake.snowflakedialect and snowflake.snowflaketypes:
+    # Sometimes "snowflake-sqlalchemy" fails to self-register in certain environments, so we do it explicitly.  # noqa: E501 # FIXME CoP
+    # (see https://stackoverflow.com/questions/53284762/nosuchmoduleerror-cant-load-plugin-sqlalchemy-dialectssnowflake)
+    sqlalchemy.dialects.registry.register("snowflake", "snowflake.sqlalchemy", "dialect")
 
-    return False, False, data
+    SNOWFLAKE_TYPES = {
+        "ARRAY": snowflake.snowflaketypes.ARRAY,
+        "BYTEINT": snowflake.snowflaketypes.BYTEINT,
+        "CHARACTER": snowflake.snowflaketypes.CHARACTER,
+        "DEC": snowflake.snowflaketypes.DEC,
+        "BOOLEAN": snowflake.snowflakedialect.BOOLEAN,
+        "DOUBLE": snowflake.snowflaketypes.DOUBLE,
+        "FIXED": snowflake.snowflaketypes.FIXED,
+        "NUMBER": snowflake.snowflaketypes.NUMBER,
+        "INTEGER": snowflake.snowflakedialect.INTEGER,
+        "OBJECT": snowflake.snowflaketypes.OBJECT,
+        "STRING": snowflake.snowflaketypes.STRING,
+        "TEXT": snowflake.snowflaketypes.TEXT,
+        "TIMESTAMP_LTZ": snowflake.snowflaketypes.TIMESTAMP_LTZ,
+        "TIMESTAMP_NTZ": snowflake.snowflaketypes.TIMESTAMP_NTZ,
+        "TIMESTAMP_TZ": snowflake.snowflaketypes.TIMESTAMP_TZ,
+        "TINYINT": snowflake.snowflaketypes.TINYINT,
+        "VARBINARY": snowflake.snowflaketypes.VARBINARY,
+        "VARIANT": snowflake.snowflaketypes.VARIANT,
+    }
+else:
+    SNOWFLAKE_TYPES = {}
 
+ATHENA_TYPES: Dict[str, Any] = (
+    # athenatypes is just `from sqlalchemy import types`
+    # https://github.com/laughingman7743/PyAthena/blob/master/pyathena/sqlalchemy_athena.py#L692
+    #   - the _get_column_type method of AthenaDialect does some mapping via conditional statements
+    # https://github.com/laughingman7743/PyAthena/blob/master/pyathena/sqlalchemy_athena.py#L105
+    #   - The AthenaTypeCompiler has some methods named `visit_<TYPE>`
+    {
+        "BOOLEAN": aws.athenatypes.BOOLEAN,
+        "FLOAT": aws.athenatypes.FLOAT,
+        "DOUBLE": aws.athenatypes.FLOAT,
+        "REAL": aws.athenatypes.FLOAT,
+        "TINYINT": aws.athenatypes.INTEGER,
+        "SMALLINT": aws.athenatypes.INTEGER,
+        "INTEGER": aws.athenatypes.INTEGER,
+        "INT": aws.athenatypes.INTEGER,
+        "BIGINT": aws.athenatypes.BIGINT,
+        "DECIMAL": aws.athenatypes.DECIMAL,
+        "CHAR": aws.athenatypes.CHAR,
+        "VARCHAR": aws.athenatypes.VARCHAR,
+        "STRING": aws.athenatypes.String,
+        "DATE": aws.athenatypes.DATE,
+        "TIMESTAMP": aws.athenatypes.TIMESTAMP,
+        "BINARY": aws.athenatypes.BINARY,
+        "VARBINARY": aws.athenatypes.BINARY,
+        "ARRAY": aws.athenatypes.String,
+        "MAP": aws.athenatypes.String,
+        "STRUCT": aws.athenatypes.String,
+        "ROW": aws.athenatypes.String,
+        "JSON": aws.athenatypes.String,
+    }
+    if aws.pyathena and aws.athenatypes
+    else {}
+)
 
-def convert_ndarray_datetime_to_float_dtype_utc_timezone(
-    data: np.ndarray,
-) -> np.ndarray:
-    """
-    Convert all elements of 1-D "np.ndarray" argument from "datetime.datetime" type to "timestamp" "float" type objects.
+# # Others from great_expectations/dataset/sqlalchemy_dataset.py
+# try:
+#     import sqlalchemy_dremio.pyodbc
+#
+#     sqlalchemy.dialects.registry.register(
+#         "dremio", "sqlalchemy_dremio.pyodbc", "dialect"
+#     )
+# except ImportError:
+#     sqlalchemy_dremio = None
+#
+# try:
+#     import teradatasqlalchemy.dialect
+#     import teradatasqlalchemy.types as teradatatypes
+# except ImportError:
+#     teradatasqlalchemy = None
 
-    Note: Conversion of "datetime.datetime" to "float" uses "UTC" TimeZone to normalize all "datetime.datetime" values.
-    """  # noqa: E501 # FIXME CoP
-    value: Any
-    return np.asarray([value.replace(tzinfo=datetime.timezone.utc).timestamp() for value in data])
+import tempfile
 
+RTOL: float = 1.0e-7
+ATOL: float = 5.0e-2
 
-def convert_ndarray_float_to_datetime_dtype(data: np.ndarray) -> np.ndarray:
-    """
-    Convert all elements of 1-D "np.ndarray" argument from "float" type to "datetime.datetime" type objects.
+RX_FLOAT = re.compile(r".*\d\.\d+.*")
 
-    Note: Converts to "naive" "datetime.datetime" values (assumes "UTC" TimeZone based floating point timestamps).
-    """  # noqa: E501 # FIXME CoP
-    value: Any
-    return np.asarray(
-        [
-            datetime.datetime.fromtimestamp(value, datetime.timezone.utc).replace(tzinfo=None)
-            for value in data
-        ]
-    )
+SQL_DIALECT_NAMES = (
+    "sqlite",
+    "postgresql",
+    "mysql",
+    "mssql",
+    "bigquery",
+    "trino",
+    "redshift",
+    "clickhouse",
+    # "athena",
+    "snowflake",
+)
 
+BACKEND_TO_ENGINE_NAME_DICT = {
+    "pandas": "pandas",
+    "spark": "spark",
+}
 
-def convert_ndarray_float_to_datetime_tuple(
-    data: np.ndarray,
-) -> Tuple[datetime.datetime, ...]:
-    """
-    Convert all elements of 1-D "np.ndarray" argument from "float" type to "datetime.datetime" type tuple elements.
-
-    Note: Converts to "naive" "datetime.datetime" values (assumes "UTC" TimeZone based floating point timestamps).
-    """  # noqa: E501 # FIXME CoP
-    return tuple(convert_ndarray_float_to_datetime_dtype(data=data).tolist())
-
-
-def does_ndarray_contain_decimal_dtype(
-    data: npt.NDArray,
-) -> TypeGuard[npt.NDArray]:
-    """
-    Determine whether or not all elements of 1-D "np.ndarray" argument are "decimal.Decimal" type objects.
-    """  # noqa: E501 # FIXME CoP
-    value: Any
-    result: bool = any(isinstance(value, decimal.Decimal) for value in data)
-    return result
-
-
-def convert_ndarray_decimal_to_float_dtype(data: np.ndarray) -> np.ndarray:
-    """
-    Convert all elements of N-D "np.ndarray" argument from "decimal.Decimal" type to "float" type objects.
-    """  # noqa: E501 # FIXME CoP
-    convert_decimal_to_float_vectorized: Callable[[np.ndarray], np.ndarray] = np.vectorize(
-        pyfunc=convert_decimal_to_float
-    )
-    return convert_decimal_to_float_vectorized(data)
-
-
-def convert_pandas_series_decimal_to_float_dtype(
-    data: pd.Series, inplace: bool = False
-) -> pd.Series | None:
-    """
-    Convert all elements of "pd.Series" argument from "decimal.Decimal" type to "float" type objects "pd.Series" result.
-    """  # noqa: E501 # FIXME CoP
-    series_data: np.ndarray = data.to_numpy()
-    series_data_has_decimal: bool = does_ndarray_contain_decimal_dtype(data=series_data)
-    if series_data_has_decimal:
-        series_data = convert_ndarray_decimal_to_float_dtype(data=series_data)
-        if inplace:
-            data.update(pd.Series(series_data))
-            return None
-
-        return pd.Series(series_data)
-
-    if inplace:
-        return None
-
-    return data
-
-
-def is_sane_slack_webhook(url: str) -> bool:
-    """Really basic sanity checking."""
-    if url is None:
-        return False
-
-    return url.strip().startswith("https://hooks.slack.com/")
-
-
-def is_list_of_strings(_list) -> TypeGuard[List[str]]:
-    return isinstance(_list, list) and all(isinstance(site, str) for site in _list)
+BACKEND_TO_ENGINE_NAME_DICT.update(dict.fromkeys(SQL_DIALECT_NAMES, "sqlalchemy"))
 
 
-def generate_temporary_table_name(
-    default_table_name_prefix: str = "gx_temp_",
-    num_digits: int = 8,
-) -> str:
-    table_name: str = f"{default_table_name_prefix}{str(uuid.uuid4())[:num_digits]}"
-    return table_name
+# The default exeuction engine is SqlAlchemyExecutionEngine so we set this and then override
+# with specific values.
+SQLALCHEMY_DIALECT_TO_ENGINE_CLASS_DICT = dict.fromkeys(
+    SQL_DIALECT_NAMES, SqlAlchemyExecutionEngine
+)
+SQLALCHEMY_DIALECT_TO_ENGINE_CLASS_DICT["sqlite"] = SqliteExecutionEngine
 
 
-def get_sqlalchemy_url(drivername, **credentials):
-    if version.parse(sa.__version__) < version.parse("1.4"):
-        # Calling URL() deprecated since 1.4, URL.create() should be used instead
-        url = sa.engine.url.URL(drivername, **credentials)
-    else:
-        url = sa.engine.url.URL.create(drivername, **credentials)
+def get_sqlite_connection_url(sqlite_db_path):
+    url = "sqlite://"
+    if sqlite_db_path is not None:
+        extra_slash = ""
+        if platform.system() != "Windows":
+            extra_slash = "/"
+        url = f"{url}/{extra_slash}{sqlite_db_path}"
     return url
 
 
-def get_sqlalchemy_selectable(
-    selectable: Union[sa.Table, sqlalchemy.Select],
-) -> Union[sa.Table, sqlalchemy.Select]:
-    """
-    Beginning from SQLAlchemy 1.4, a select() can no longer be embedded inside of another select() directly,
-    without explicitly turning the inner select() into a subquery first. This helper method ensures that this
-    conversion takes place.
+def get_test_validator_with_data(  # noqa: PLR0913 # FIXME CoP
+    execution_engine: str,
+    data: dict,
+    table_name: str | None = None,
+    schemas: dict | None = None,
+    caching: bool = True,
+    sqlite_db_path: str | None = None,
+    extra_debug_info: str = "",
+    debug_logger: logging.Logger | None = None,
+    context: AbstractDataContext | None = None,
+    pk_column: bool = False,
+):
+    """Utility to create datasets for json-formatted tests."""
 
-    For versions of SQLAlchemy < 1.4 the implicit conversion to a subquery may not always work, so that
-    also needs to be handled here, using the old equivalent method.
+    # if pk_column is defined in our test, then we add a index column to our test set
+    if pk_column:
+        first_column: List[Any] = list(data.values())[0]
+        data["pk_index"] = list(range(len(first_column)))
 
-    https://docs.sqlalchemy.org/en/14/changelog/migration_14.html#change-4617
-    """  # noqa: E501 # FIXME CoP
-    if sqlalchemy.Select and isinstance(selectable, sqlalchemy.Select):  # type: ignore[truthy-function] # FIXME CoP
-        if version.parse(sa.__version__) >= version.parse("1.4"):
-            selectable = selectable.subquery()  # type: ignore[assignment] # FIXME CoP
-        else:
-            selectable = selectable.alias()  # type: ignore[assignment] # FIXME CoP
-    return selectable
-
-
-def get_sqlalchemy_subquery_type():
-    """
-    Beginning from SQLAlchemy 1.4, `sqlalchemy.sql.Alias` has been deprecated in favor of `sqlalchemy.sql.Subquery`.
-    This helper method ensures that the appropriate type is returned.
-
-    https://docs.sqlalchemy.org/en/14/changelog/migration_14.html#change-4617
-    """  # noqa: E501 # FIXME CoP
-    try:
-        return sa.sql.Subquery
-    except AttributeError:
-        return sa.sql.Alias
-
-
-def get_sqlalchemy_domain_data(domain_data):
-    if version.parse(sa.__version__) < version.parse("1.4"):
-        # Implicit coercion of SELECT and SELECT constructs is deprecated since 1.4
-        # select(query).subquery() should be used instead
-        domain_data = sa.select(sa.text("*")).select_from(domain_data)
-    # engine.get_domain_records returns a valid select object;
-    # calling fetchall at execution is equivalent to a SELECT *
-    return domain_data
-
-
-def import_make_url():
-    """
-    Beginning from SQLAlchemy 1.4, make_url is accessed from sqlalchemy.engine; earlier versions must
-    still be accessed from sqlalchemy.engine.url to avoid import errors.
-    """  # noqa: E501 # FIXME CoP
-    if version.parse(sa.__version__) < version.parse("1.4"):
-        make_url = sqlalchemy.url.make_url
+    df = pd.DataFrame(data)
+    if execution_engine == "pandas":
+        return _get_test_validator_with_data_pandas(
+            df=df,
+            schemas=schemas,
+            table_name=table_name,
+            context=context,
+            pk_column=pk_column,
+        )
+    elif execution_engine in SQL_DIALECT_NAMES:
+        return _get_test_validator_with_data_sqlalchemy(
+            df=df,
+            execution_engine=execution_engine,
+            schemas=schemas,
+            caching=caching,
+            table_name=table_name,
+            sqlite_db_path=sqlite_db_path,
+            extra_debug_info=extra_debug_info,
+            debug_logger=debug_logger,
+            context=context,
+            pk_column=pk_column,
+        )
+    elif execution_engine == "spark":
+        return _get_test_validator_with_data_spark(
+            data=data,
+            schemas=schemas,
+            context=context,
+            pk_column=pk_column,
+        )
     else:
-        make_url = sqlalchemy.engine.make_url
-
-    return make_url
+        raise ValueError(f"Unknown dataset_type {execution_engine!s}")  # noqa: TRY003 # FIXME CoP
 
 
-def get_clickhouse_sqlalchemy_potential_type(type_module, type_) -> Any:
-    ch_type = type_
-    if type(ch_type) is str:
-        if type_.lower() in ("decimal", "decimaltype()"):
-            ch_type = type_module.types.Decimal
-        elif type_.lower() in ("fixedstring"):
-            ch_type = type_module.types.String
-        else:
-            ch_type = type_module.ClickHouseDialect()._get_column_type("", ch_type)
+def _get_test_validator_with_data_pandas(  # noqa: C901 # FIXME CoP
+    df: pd.DataFrame,
+    schemas: dict | None,
+    table_name: str | None,
+    context: AbstractDataContext | None,
+    pk_column: bool,
+) -> Validator:
+    if schemas and "pandas" in schemas:
+        schema = schemas["pandas"]
+        if pk_column:
+            schema["pk_index"] = "int"
+        pandas_schema = {}
+        for key, value in schema.items():
+            # Note, these are just names used in our internal schemas to build datasets *for internal tests*  # noqa: E501 # FIXME CoP
+            # Further, some changes in pandas internal about how datetimes are created means to support pandas  # noqa: E501 # FIXME CoP
+            # pre- 0.25, we need to explicitly specify when we want timezone.
 
-    if hasattr(ch_type, "nested_type"):
-        ch_type = type(ch_type.nested_type)
-    if not inspect.isclass(ch_type):
-        ch_type = type(ch_type)
-    return ch_type
+            # We will use timestamp for timezone-aware (UTC only) dates in our tests
+            if value.lower() in ["timestamp", "datetime64[ns, tz]"]:
+                df[key] = execute_pandas_to_datetime(df[key], utc=True)
+                continue
+            elif value.lower() in ["datetime", "datetime64", "datetime64[ns]"]:
+                df[key] = execute_pandas_to_datetime(df[key])
+                continue
+            elif value.lower() in ["date"]:
+                df[key] = execute_pandas_to_datetime(df[key]).dt.date
+                value = "object"  # noqa: PLW2901 # FIXME CoP
+            try:
+                type_ = np.dtype(value)
+            except TypeError:
+                # noinspection PyUnresolvedReferences
+                type_ = getattr(pd, value)()
+            pandas_schema[key] = type_
+        # pandas_schema = {key: np.dtype(value) for (key, value) in schemas["pandas"].items()}
+        df = df.astype(pandas_schema)
 
+    if table_name is None:
+        # noinspection PyUnusedLocal
+        table_name = generate_test_table_name()
 
-def get_pyathena_potential_type(type_module, type_) -> str:
-    if version.parse(type_module.pyathena.__version__) >= version.parse("2.5.0"):
-        # introduction of new column type mapping in 2.5
-        potential_type = type_module.AthenaDialect()._get_column_type(type_)
-    else:
-        if type_ == "string":
-            type_ = "varchar"
-        # < 2.5 column type mapping
-        potential_type = type_module._TYPE_MAPPINGS.get(type_)
+    batch_definition = LegacyBatchDefinition(
+        datasource_name="pandas_datasource",
+        data_connector_name="runtime_data_connector",
+        data_asset_name="my_asset",
+        batch_identifiers=make_batch_identifier({}),
+        batch_spec_passthrough=None,
+    )
 
-    return potential_type
-
-
-def get_trino_potential_type(type_module: ModuleType, type_: str) -> object:
-    """
-    Leverage on Trino Package to return sqlalchemy sql type
-    """
-    # noinspection PyUnresolvedReferences
-    potential_type = type_module.parse_sqltype(type_)
-    return potential_type
-
-
-Inclusive = Literal["left", "right", "neither", "both"]
-
-
-def pandas_series_between(
-    series: pd.Series, min_value: int, max_value: int, inclusive: Inclusive
-) -> pd.Series:
-    """
-    As of Pandas 1.3.0, the 'inclusive' arg in between() is a string literal: {"left", "right", "neither", "both"}
-    """  # noqa: E501 # FIXME CoP
-    metric_series: pd.Series
-    if version.parse(pd.__version__) >= version.parse("1.3.0"):
-        metric_series = series.between(min_value, max_value, inclusive=inclusive)
-    elif inclusive == "left":
-        metric_series = (series >= min_value) & (series < max_value)
-    elif inclusive == "right":
-        metric_series = (series > min_value) & (series <= max_value)
-    elif inclusive == "neither":
-        metric_series = series.between(min_value, max_value, inclusive=False)  # type: ignore[arg-type]  # valid for pandas < 1.3
-    elif inclusive == "both":
-        metric_series = series.between(min_value, max_value, inclusive=True)  # type: ignore[arg-type]  # valid for pandas < 1.3
-    else:
-        metric_series = series.between(min_value, max_value)
-
-    return metric_series
+    return build_pandas_validator_with_data(
+        df=df, batch_definition=batch_definition, context=context
+    )
 
 
-ToBool: TypeAlias = bool
-ToFloat: TypeAlias = Union[float, np.floating]
-ToInt: TypeAlias = Union[int, np.integer]
-ToStr: TypeAlias = Union[
-    str, bytes, slice, uuid.UUID, datetime.date, datetime.datetime, np.datetime64
-]
-
-ToList: TypeAlias = Union[list, set, tuple, "npt.NDArray", pd.Index, pd.Series]
-ToDict: TypeAlias = Union[
-    dict,
-    "CommentedMap",
-    pd.DataFrame,
-    SerializableDictDot,
-    SerializableDotDict,
-    pydantic.BaseModel,
-]
-
-JSONConvertable: TypeAlias = Union[
-    ToDict, ToList, ToStr, ToInt, ToFloat, ToBool, ToBool, None  # noqa: PYI016 # FIXME CoP
-]
-
-
-@overload
-def convert_to_json_serializable(
-    data: ToDict,
-) -> dict: ...
-
-
-@overload
-def convert_to_json_serializable(
-    data: ToList,
-) -> list: ...
-
-
-@overload
-def convert_to_json_serializable(
-    data: ToBool,
-) -> bool: ...
-
-
-@overload
-def convert_to_json_serializable(
-    data: ToFloat,
-) -> float: ...
-
-
-@overload
-def convert_to_json_serializable(
-    data: ToInt,
-) -> int: ...
-
-
-@overload
-def convert_to_json_serializable(
-    data: ToStr,
-) -> str: ...
-
-
-@overload
-def convert_to_json_serializable(
-    data: None,
-) -> None: ...
-
-
-def convert_to_json_serializable(  # noqa: C901, PLR0911, PLR0912 # FIXME CoP
-    data: JSONConvertable,
-) -> JSONValues:
-    """Converts an object to one that is JSON-serializable.
-
-    WARNING, data may be converted in place.
-
-    Args:
-        data: an object to convert to a JSON-serializable object
-
-    Returns:
-        A JSON-serializable object. For example:
-
-        >>> convert_to_json_serializable(1)
-        1
-
-        >>> convert_to_json_serializable("hello")
-        "hello"
-
-        >>> convert_to_json_serializable(Polygon([(0, 0), (2, 0), (2, 2), (0, 2)]))
-        "POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0))"
-
-    Raises:
-        TypeError: A non-JSON-serializable field was found.
-    """
-    if isinstance(data, pydantic.BaseModel):
-        return json.loads(data.json())
-
-    if isinstance(data, (SerializableDictDot, SerializableDotDict)):
-        return data.to_json_dict()
-
-    # Handling "float(nan)" separately is required by Python-3.6 and Pandas-0.23 versions.
-    if isinstance(data, float) and np.isnan(data):
+def _get_test_validator_with_data_sqlalchemy(  # noqa: PLR0913 # FIXME CoP
+    df: pd.DataFrame,
+    execution_engine: str,
+    schemas: dict | None,
+    caching: bool,
+    table_name: str | None,
+    sqlite_db_path: str | None,
+    extra_debug_info: str,
+    debug_logger: logging.Logger | None,
+    context: AbstractDataContext | None,
+    pk_column: bool,
+) -> Validator | None:
+    if not sa:
         return None
 
-    if isinstance(data, (str, int, float, bool)):
-        # No problem to encode json
-        return data
-
-    if isinstance(data, Enum):
-        return data.value
-
-    if isinstance(data, range):
-        return list(data)
-
-    if isinstance(data, dict):
-        new_dict = {}
-        for key in data:
-            # A pandas index can be numeric, and a dict key can be numeric, but a json key must be a string  # noqa: E501 # FIXME CoP
-            new_dict[str(key)] = convert_to_json_serializable(data[key])
-
-        return new_dict
-
-    if isinstance(data, (list, tuple, set)):
-        new_list: List[JSONValues] = []
-        for val in data:
-            new_list.append(convert_to_json_serializable(val))
-
-        return new_list
-
-    if isinstance(data, (np.ndarray, pd.Index)):
-        # test_obj[key] = test_obj[key].tolist()
-        # If we have an array or index, convert it first to a list--causing coercion to float--and then round  # noqa: E501 # FIXME CoP
-        # to the number of digits for which the string representation will equal the float representation  # noqa: E501 # FIXME CoP
-        return [convert_to_json_serializable(x) for x in data.tolist()]
-
-    if isinstance(data, np.int64):
-        return int(data)
-
-    if isinstance(data, np.float64):
-        return float(data)
-
-    if isinstance(data, (datetime.datetime, datetime.date, datetime.time)):
-        return data.isoformat()
-
-    if isinstance(data, (np.datetime64)):
-        return np.datetime_as_string(data)
-
-    if isinstance(data, uuid.UUID):
-        return str(data)
-
-    if isinstance(data, bytes):
-        return str(data)
-
-    if isinstance(data, slice):
-        return str(data)
-
-    if isinstance(data, pathlib.PurePath):
-        return str(data)
-
-    # noinspection PyTypeChecker
-    if Polygon is not None and isinstance(data, (Point, Polygon, MultiPolygon, LineString)):
-        return str(data)
-
-    # Use built in base type from numpy, https://docs.scipy.org/doc/numpy-1.13.0/user/basics.types.html
-    # https://github.com/numpy/numpy/pull/9505
-    if np.issubdtype(type(data), np.bool_):
-        return bool(data)
-
-    if np.issubdtype(type(data), np.integer) or np.issubdtype(type(data), np.uint):
-        return int(data)  # type: ignore[arg-type] # could be None
-
-    if np.issubdtype(type(data), np.floating):
-        # Note: Use np.floating to avoid FutureWarning from numpy
-        return float(round(data, sys.float_info.dig))  # type: ignore[arg-type] # could be None
-
-    # Note: This clause has to come after checking for np.ndarray or we get:
-    #      `ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()`  # noqa: E501 # FIXME CoP
-    if data is None:
-        # No problem to encode json
-        return data
-
-    try:
-        if not isinstance(data, list) and pd.isna(data):  # FIXME CoP
-            # pd.isna is functionally vectorized, but we only want to apply this to single objects
-            # Hence, why we test for `not isinstance(list)`
-            return None
-    except TypeError:
-        pass
-    except ValueError:
-        pass
-
-    if isinstance(data, pd.Series):
-        # Converting a series is tricky since the index may not be a string, but all json
-        # keys must be strings. So, we use a very ugly serialization strategy
-        index_name = data.index.name or "index"
-        value_name = data.name or "value"
-        return [
-            {
-                index_name: convert_to_json_serializable(idx),  # type: ignore[call-overload,dict-item] # FIXME CoP
-                value_name: convert_to_json_serializable(val),  # type: ignore[dict-item] # FIXME CoP
-            }
-            for idx, val in data.items()
-        ]
-
-    if isinstance(data, pd.DataFrame):
-        return convert_to_json_serializable(data.to_dict(orient="records"))
-
-    if pyspark.DataFrame and isinstance(data, pyspark.DataFrame):  # type: ignore[truthy-function] # FIXME CoP
-        # using StackOverflow suggestion for converting pyspark df into dictionary
-        # https://stackoverflow.com/questions/43679880/pyspark-dataframe-to-dictionary-columns-as-keys-and-list-of-column-values-ad-di
-        return convert_to_json_serializable(
-            dict(zip(data.schema.names, zip(*data.collect(), strict=False), strict=False))
+    if table_name is None:
+        raise ExecutionEngineError(  # noqa: TRY003 # FIXME CoP
+            "Initializing a Validator for SqlAlchemyExecutionEngine in tests requires `table_name` to be defined. Please check your configuration"  # noqa: E501 # FIXME CoP
         )
-
-    # SQLAlchemy serialization
-    if LegacyRow and isinstance(data, LegacyRow):
-        return dict(data)
-
-    # sqlalchemy text for SqlAlchemy 2 compatibility
-    if sqlalchemy.TextClause and isinstance(data, sqlalchemy.TextClause):  # type: ignore[truthy-function] # FIXME CoP
-        return str(data)
-
-    if Row and isinstance(data, Row):  # type: ignore[truthy-function] # FIXME CoP
-        return str(data)
-
-    if isinstance(data, decimal.Decimal):
-        return convert_decimal_to_float(d=data)
-
-    from great_expectations.core.run_identifier import RunIdentifier
-
-    if isinstance(data, RunIdentifier):
-        return data.to_json_dict()
-
-    # PySpark schema serialization
-    if pyspark.types and isinstance(data, pyspark.types.StructType):
-        return dict(data.jsonValue())
-
-    if sqlalchemy.Connection and isinstance(data, sqlalchemy.Connection):  # type: ignore[truthy-function] # FIXME CoP
-        # Connection is a module, which is non-serializable. Return module name instead.
-        return "sqlalchemy.engine.base.Connection"
-
-    if isinstance(data, RenderedContent):
-        return data.to_json_dict()
-
-    if isinstance(data, re.Pattern):
-        return data.pattern
-
-    # Unable to serialize (unrecognized data type).
-    raise TypeError(f"{data!s} is of type {type(data).__name__} which cannot be serialized.")  # noqa: TRY003 # FIXME CoP
-
-
-def ensure_json_serializable(data: Any) -> None:  # noqa: C901, PLR0911, PLR0912 # FIXME CoP
-    """
-    Helper function to convert an object to one that is json serializable
-    Args:
-        data: an object to attempt to convert a corresponding json-serializable object
-    Warning:
-        test_obj may also be converted in place.
-    """
-    if isinstance(data, pydantic.BaseModel):
-        return
-
-    if isinstance(data, (SerializableDictDot, SerializableDotDict)):
-        return
-
-    if isinstance(data, ((str,), (int,), float, bool)):
-        # No problem to encode json
-        return
-
-    if isinstance(data, dict):
-        for key in data:
-            str(key)  # key must be cast-able to string
-            ensure_json_serializable(data[key])
-
-        return
-
-    if isinstance(data, (list, tuple, set)):
-        for val in data:
-            ensure_json_serializable(val)
-        return
-
-    if isinstance(data, (np.ndarray, pd.Index)):
-        # test_obj[key] = test_obj[key].tolist()
-        # If we have an array or index, convert it first to a list--causing coercion to float--and then round  # noqa: E501 # FIXME CoP
-        # to the number of digits for which the string representation will equal the float representation  # noqa: E501 # FIXME CoP
-        _ = [ensure_json_serializable(x) for x in data.tolist()]  # type: ignore[func-returns-value] # FIXME CoP
-        return
-
-    if isinstance(data, (datetime.datetime, datetime.date, datetime.time)):
-        return
-
-    if isinstance(data, pathlib.PurePath):
-        return
-
-    # Use built in base type from numpy, https://docs.scipy.org/doc/numpy-1.13.0/user/basics.types.html
-    # https://github.com/numpy/numpy/pull/9505
-    if np.issubdtype(type(data), np.bool_):
-        return
-
-    if np.issubdtype(type(data), np.integer) or np.issubdtype(type(data), np.uint):
-        return
-
-    if np.issubdtype(type(data), np.floating):
-        # Note: Use np.floating to avoid FutureWarning from numpy
-        return
-
-    # Note: This clause has to come after checking for np.ndarray or we get:
-    #      `ValueError: The truth value of an array with more than one element is ambiguous. Use a.any() or a.all()`  # noqa: E501 # FIXME CoP
-    if data is None:
-        # No problem to encode json
-        return
-
-    try:
-        if not isinstance(data, list) and pd.isna(data):
-            # pd.isna is functionally vectorized, but we only want to apply this to single objects
-            # Hence, why we test for `not isinstance(list))`
-            return
-    except TypeError:
-        pass
-    except ValueError:
-        pass
-
-    if isinstance(data, pd.Series):
-        # Converting a series is tricky since the index may not be a string, but all json
-        # keys must be strings. So, we use a very ugly serialization strategy
-        index_name = data.index.name or "index"
-        value_name = data.name or "value"
-        _ = [
-            {
-                index_name: ensure_json_serializable(idx),  # type: ignore[func-returns-value] # FIXME CoP
-                value_name: ensure_json_serializable(val),  # type: ignore[func-returns-value] # FIXME CoP
-            }
-            for idx, val in data.items()
-        ]
-        return
-
-    if pyspark.DataFrame and isinstance(data, pyspark.DataFrame):  # type: ignore[truthy-function] # ensure pyspark is installed
-        # using StackOverflow suggestion for converting pyspark df into dictionary
-        # https://stackoverflow.com/questions/43679880/pyspark-dataframe-to-dictionary-columns-as-keys-and-list-of-column-values-ad-di
-        return ensure_json_serializable(
-            dict(zip(data.schema.names, zip(*data.collect(), strict=False), strict=False))
-        )
-
-    if isinstance(data, pd.DataFrame):
-        return ensure_json_serializable(data.to_dict(orient="records"))
-
-    if isinstance(data, decimal.Decimal):
-        return
-
-    from great_expectations.core.run_identifier import RunIdentifier
-
-    if isinstance(data, RunIdentifier):
-        return
-
-    if sqlalchemy.TextClause and isinstance(data, sqlalchemy.TextClause):  # type: ignore[truthy-function] # FIXME CoP
-        # TextClause is handled manually by convert_to_json_serializable()
-        return
-
-    if sqlalchemy.Connection and isinstance(data, sqlalchemy.Connection):  # type: ignore[truthy-function] # FIXME CoP
-        # Connection module is handled manually by convert_to_json_serializable()
-        return
-
-    raise InvalidExpectationConfigurationError(  # noqa: TRY003 # FIXME CoP
-        f"{data!s} is of type {type(data).__name__} which cannot be serialized to json"
+    return build_sa_validator_with_data(
+        df=df,
+        sa_engine_name=execution_engine,
+        schemas=schemas,
+        caching=caching,
+        table_name=table_name,
+        sqlite_db_path=sqlite_db_path,
+        extra_debug_info=extra_debug_info,
+        debug_logger=debug_logger,
+        batch_definition=None,
+        context=context,
+        pk_column=pk_column,
     )
+
+
+def _get_test_validator_with_data_spark(  # noqa: C901, PLR0912, PLR0915 # FIXME CoP
+    data: dict,
+    schemas: dict | None,
+    context: AbstractDataContext | None,
+    pk_column: bool,
+) -> Validator:
+    spark_types: Dict[str, Callable] = {
+        "StringType": pyspark.types.StringType,
+        "IntegerType": pyspark.types.IntegerType,
+        "LongType": pyspark.types.LongType,
+        "DateType": pyspark.types.DateType,
+        "TimestampType": pyspark.types.TimestampType,
+        "FloatType": pyspark.types.FloatType,
+        "DoubleType": pyspark.types.DoubleType,
+        "BooleanType": pyspark.types.BooleanType,
+        "DataType": pyspark.types.DataType,
+        "NullType": pyspark.types.NullType,
+        # When inferring schema from decimal.Decimal objects, pyspark uses DecimalType(38, 18).
+        "DecimalType": partial(pyspark.types.DecimalType, 38, 18),
+    }
+
+    spark = SparkDFExecutionEngine.get_or_create_spark_session()
+    # We need to allow null values in some column types that do not support them natively, so we skip  # noqa: E501 # FIXME CoP
+    # use of df in this case.
+    data_reshaped = list(zip(*(v for _, v in data.items()), strict=False))  # create a list of rows
+    if schemas and "spark" in schemas:
+        schema = schemas["spark"]
+        if pk_column:
+            schema["pk_index"] = "IntegerType"
+        # sometimes first method causes Spark to throw a TypeError
+        try:
+            spark_schema = pyspark.types.StructType(
+                [
+                    pyspark.types.StructField(column, spark_types[schema[column]](), True)
+                    for column in schema
+                ]
+            )
+            # We create these every time, which is painful for testing
+            # However nuance around null treatment as well as the desire
+            # for real datetime support in tests makes this necessary
+            data = copy.deepcopy(data)
+            if "ts" in data:
+                print(data)
+                print(schema)
+            for col in schema:
+                type_ = schema[col]
+                # Ints cannot be None...but None can be valid in Spark (as Null)
+                vals: List[Union[str, int, float, None, Decimal]] = []
+                if type_ in ["IntegerType", "LongType"]:
+                    for val in data[col]:
+                        if val is None:
+                            vals.append(val)
+                        else:
+                            vals.append(int(val))
+                    data[col] = vals
+                elif type_ in ["FloatType", "DoubleType"]:
+                    for val in data[col]:
+                        if val is None:
+                            vals.append(val)
+                        else:
+                            vals.append(float(val))
+                    data[col] = vals
+                elif type_ in ["DecimalType"]:
+                    for val in data[col]:
+                        if val is None:
+                            vals.append(val)
+                        else:
+                            vals.append(Decimal(val))
+                    data[col] = vals
+                elif type_ in ["DateType", "TimestampType"]:
+                    for val in data[col]:
+                        if val is None:
+                            vals.append(val)
+                        else:
+                            vals.append(parse(val))  # type: ignore[arg-type] # FIXME CoP
+                    data[col] = vals
+            # Do this again, now that we have done type conversion using the provided schema
+            data_reshaped = list(
+                zip(*(v for _, v in data.items()), strict=False)
+            )  # create a list of rows
+            spark_df = spark.createDataFrame(data_reshaped, schema=spark_schema)
+        except TypeError:
+            string_schema = pyspark.types.StructType(
+                [pyspark.types.StructField(column, pyspark.types.StringType()) for column in schema]
+            )
+            spark_df = spark.createDataFrame(data_reshaped, string_schema)
+            for c in spark_df.columns:
+                # Coerce the string-loaded columns to their declared types via SQL try_cast
+                # rather than Column.cast. Under strict ANSI SQL evaluation, Column.cast raises
+                # on unparseable input, whereas try_cast resolves it to null. These legacy test
+                # fixtures intentionally include values that don't parse into their declared type
+                # and rely on those becoming null at load time, so try_cast preserves the intended
+                # semantics regardless of the ANSI evaluation mode.
+                type_str = spark_types[schema[c]]().simpleString()
+                spark_df = spark_df.withColumn(
+                    c, pyspark.functions.expr(f"try_cast(`{c}` as {type_str})")
+                )
+    elif len(data_reshaped) == 0:
+        # if we have an empty dataset and no schema, need to assign an arbitrary type
+        columns = list(data.keys())
+        spark_schema = pyspark.types.StructType(
+            [pyspark.types.StructField(column, pyspark.types.StringType()) for column in columns]
+        )
+        spark_df = spark.createDataFrame(data_reshaped, spark_schema)
+    else:
+        # if no schema provided, uses Spark's schema inference
+        columns = list(data.keys())
+        spark_df = spark.createDataFrame(data_reshaped, columns)
+
+    batch_definition = LegacyBatchDefinition(
+        datasource_name="spark_datasource",
+        data_connector_name="runtime_data_connector",
+        data_asset_name="my_asset",
+        batch_identifiers=make_batch_identifier({}),
+        batch_spec_passthrough=None,
+    )
+    return build_spark_validator_with_data(
+        df=spark_df,
+        spark=spark,
+        batch_definition=batch_definition,
+        context=context,
+    )
+
+
+def build_pandas_validator_with_data(
+    df: pd.DataFrame,
+    batch_definition: Optional[LegacyBatchDefinition] = None,
+    context: Optional[AbstractDataContext] = None,
+) -> Validator:
+    batch = Batch(data=df, batch_definition=batch_definition)  # type: ignore[arg-type] # FIXME CoP
+
+    if context is None:
+        context = gx.get_context(mode="ephemeral")
+
+    return Validator(
+        execution_engine=PandasExecutionEngine(),
+        batches=[
+            batch,
+        ],
+        data_context=context,
+    )
+
+
+def drop_table(table_name: str, connection_string: str) -> None:
+    engine = sa.create_engine(resolve_postgresql_driver(connection_string))
+    with engine.connect() as conn:
+        conn.execute(sa.text(f"DROP TABLE IF EXISTS {table_name}"))
+        conn.commit()
+
+
+def build_sa_validator_with_data(  # noqa: C901, PLR0912, PLR0913, PLR0915 # FIXME CoP
+    df,
+    sa_engine_name,
+    table_name,
+    schemas=None,
+    caching=True,
+    sqlite_db_path=None,
+    extra_debug_info="",
+    batch_definition: Optional[LegacyBatchDefinition] = None,
+    debug_logger: Optional[logging.Logger] = None,
+    context: Optional[AbstractDataContext] = None,
+    pk_column: bool = False,
+):
+    _debug = lambda x: x  # noqa: E731 # FIXME CoP
+    if debug_logger:
+        _debug = lambda x: debug_logger.debug(  # noqa: E731 # FIXME CoP
+            f"(build_sa_validator_with_data) {x}"
+        )
+
+    dialect_classes: Dict[str, Type] = {}
+    dialect_types = {}
+    try:
+        dialect_classes["sqlite"] = sqlalchemy.sqlite.dialect
+        dialect_types["sqlite"] = SQLITE_TYPES
+    except AttributeError:
+        pass
+
+    try:
+        # The driver-neutral base class: `postgresqltypes.dialect` is only the default
+        # driver's dialect (psycopg2 before SQLAlchemy 2.1, psycopg after), so an engine
+        # on the other driver would not be recognised and its schema would be skipped.
+        dialect_classes["postgresql"] = postgresqltypes.base.PGDialect
+        dialect_types["postgresql"] = POSTGRESQL_TYPES  # type: ignore[assignment] # FIXME CoP
+    except AttributeError:
+        pass
+
+    try:
+        dialect_classes["mysql"] = mysqltypes.dialect
+        dialect_types["mysql"] = MYSQL_TYPES  # type: ignore[assignment] # FIXME CoP
+    except AttributeError:
+        pass
+
+    try:
+        dialect_classes["mssql"] = sql_server_types.dialect
+        dialect_types["mssql"] = SQL_SERVER_TYPES
+    except AttributeError:
+        pass
+
+    try:
+        dialect_classes["bigquery"] = BigQueryDialect  # type: ignore[assignment] # FIXME CoP
+        dialect_types["bigquery"] = BIGQUERY_TYPES
+    except AttributeError:
+        pass
+
+    try:
+        dialect_classes["clickhouse"] = clickhouseDialect
+        dialect_types["clickhouse"] = CLICKHOUSE_TYPES
+    except AttributeError:
+        pass
+
+    if aws.redshiftdialect:
+        dialect_classes["redshift"] = aws.redshiftdialect.RedshiftDialect
+        dialect_types["redshift"] = REDSHIFT_TYPES
+
+    if aws.sqlalchemy_athena:
+        dialect_classes["athena"] = aws.sqlalchemy_athena.AthenaDialect
+        dialect_types["athena"] = ATHENA_TYPES
+
+    if snowflake.snowflakedialect:
+        dialect_classes["snowflake"] = snowflake.snowflakedialect.dialect
+        dialect_types["snowflake"] = SNOWFLAKE_TYPES
+
+    if trino.trinodialect:
+        dialect_classes["trino"] = trino.trinodialect.TrinoDialect
+        dialect_types["trino"] = TRINO_TYPES
+
+    if trino.trinodialect:
+        dialect_classes["trino"] = trino.trinodialect.TrinoDialect
+        dialect_types["trino"] = TRINO_TYPES
+
+    db_hostname = os.getenv("GE_TEST_LOCAL_DB_HOSTNAME", "localhost")
+
+    if sa_engine_name == "sqlite":
+        connection_string = get_sqlite_connection_url(sqlite_db_path)
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "postgresql":
+        connection_string = f"postgresql://postgres@{db_hostname}/test_ci"
+        engine = sa.create_engine(resolve_postgresql_driver(connection_string))
+    elif sa_engine_name == "mysql":
+        connection_string = f"mysql+pymysql://root@{db_hostname}/test_ci"
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "mssql":
+        connection_string = (
+            "mssql+pyodbc://sa:ReallyStrongPwd1234%^&*@127.0.0.1:1433/test_ci"
+            "?driver=ODBC Driver 18 for SQL Server&charset=utf8"
+            "&autocommit=true&TrustServerCertificate=yes"
+        )
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "bigquery":
+        connection_string = _get_bigquery_connection_string()
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "clickhouse":
+        connection_string = _get_clickhouse_connection_string()
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "trino":
+        connection_string = _get_trino_connection_string()
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "redshift":
+        connection_string = _get_redshift_connection_string()
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "athena":
+        connection_string = _get_athena_connection_string()
+        engine = sa.create_engine(connection_string)
+    elif sa_engine_name == "snowflake":
+        engine = _create_snowflake_engine()
+    else:
+        connection_string = None
+        engine = None
+
+    # If "autocommit" is not desired to be on by default, then use the following pattern when explicit "autocommit"  # noqa: E501 # FIXME CoP
+    # is desired (e.g., for temporary tables, "autocommit" is off by default, so the override option may be useful).  # noqa: E501 # FIXME CoP
+    # execution_engine.execute_query(sa.text(sql_query_string).execution_options(autocommit=True))
+
+    # Add the data to the database as a new table
+
+    if sa_engine_name == "bigquery":
+        df.columns = df.columns.str.replace(" ", "_")
+
+    sql_dtypes = {}
+    # noinspection PyTypeHints
+    if (
+        schemas
+        and sa_engine_name in schemas
+        and isinstance(engine.dialect, dialect_classes[sa_engine_name])  # type: ignore[union-attr] # FIXME CoP
+    ):
+        schema = schemas[sa_engine_name]
+        if pk_column:
+            schema["pk_index"] = "INTEGER"
+
+        sql_dtypes = {col: dialect_types[sa_engine_name][dtype] for (col, dtype) in schema.items()}
+        for col in schema:
+            type_ = schema[col]
+            if type_ in ["INTEGER", "SMALLINT", "BIGINT", "NUMBER"]:
+                df[col] = pd.to_numeric(df[col], downcast="signed")
+            elif type_ in ["FLOAT", "DOUBLE", "DOUBLE_PRECISION"]:
+                df[col] = pd.to_numeric(df[col])
+                min_value_dbms = get_sql_dialect_floating_point_infinity_value(
+                    schema=sa_engine_name, negative=True
+                )
+                max_value_dbms = get_sql_dialect_floating_point_infinity_value(
+                    schema=sa_engine_name, negative=False
+                )
+                for api_schema_type in ["api_np", "api_cast"]:
+                    min_value_api = get_sql_dialect_floating_point_infinity_value(
+                        schema=api_schema_type, negative=True
+                    )
+                    max_value_api = get_sql_dialect_floating_point_infinity_value(
+                        schema=api_schema_type, negative=False
+                    )
+                    df.replace(
+                        to_replace=[min_value_api, max_value_api],
+                        value=[min_value_dbms, max_value_dbms],
+                        inplace=True,
+                    )
+            elif type_ in [
+                "DATETIME",
+                "TIMESTAMP",
+                "DATE",
+                "TIMESTAMP_NTZ",  # the following 3 types are snowflake-specific
+                "TIMESTAMP_LTZ",
+                "TIMESTAMP_TZ",
+            ]:
+                df[col] = execute_pandas_to_datetime(df[col])
+            elif type_ in ["VARCHAR", "STRING"]:
+                df[col] = df[col].apply(str)
+
+    if sa_engine_name in [
+        "trino",
+    ]:
+        table_name = table_name.lower()
+        sql_insert_method = "multi"
+    else:
+        sql_insert_method = None
+
+    execution_engine_class = SQLALCHEMY_DIALECT_TO_ENGINE_CLASS_DICT[sa_engine_name]
+    execution_engine = execution_engine_class(caching=caching, engine=engine)
+    batch_data = SqlAlchemyBatchData(execution_engine=execution_engine, table_name=table_name)
+    with execution_engine.get_connection() as connection:
+        _debug("Calling df.to_sql")
+        _start = time.time()
+        add_dataframe_to_db(
+            df=df,
+            name=table_name,
+            con=connection,
+            index=False,
+            dtype=sql_dtypes,
+            if_exists="replace",
+            method=sql_insert_method,
+        )
+        _end = time.time()
+        _debug(f"Took {_end - _start} seconds to df.to_sql for {sa_engine_name} {extra_debug_info}")
+
+    if context is None:
+        context = gx.get_context(mode="ephemeral")
+
+    if batch_definition is None:
+        # maintain legacy behavior - standup a dummy LegacyBatchDefinition
+        batch_definition = LegacyBatchDefinition(
+            datasource_name="my_test_datasource",
+            data_connector_name="my_sql_data_connector",
+            data_asset_name="my_asset",
+            batch_identifiers=make_batch_identifier({}),
+        )
+
+    batch = Batch(data=batch_data, batch_definition=batch_definition)  # type: ignore[arg-type] # got SqlAlchemyBatchData
+
+    return Validator(
+        execution_engine=execution_engine,
+        data_context=context,
+        batches=[
+            batch,
+        ],
+    )
+
+
+def modify_locale(func: Callable[P, None]) -> Callable[P, None]:
+    @wraps(func)
+    def locale_wrapper(*args: P.args, **kwargs: P.kwargs) -> None:
+        old_locale = locale.setlocale(locale.LC_TIME, None)
+        print(old_locale)
+        # old_locale = locale.getlocale(locale.LC_TIME) Why not getlocale? not sure
+        try:
+            new_locale = locale.setlocale(locale.LC_TIME, "en_US.UTF-8")
+            assert new_locale == "en_US.UTF-8"
+            func(*args, **kwargs)
+        finally:
+            locale.setlocale(locale.LC_TIME, old_locale)
+
+    return locale_wrapper
+
+
+def build_spark_validator_with_data(
+    df: Union[pd.DataFrame, pyspark.DataFrame],
+    spark: pyspark.SparkSession,
+    batch_definition: Optional[LegacyBatchDefinition] = None,
+    context: Optional[AbstractDataContext] = None,
+) -> Validator:
+    if isinstance(df, pd.DataFrame):
+        df = spark.createDataFrame(
+            [
+                tuple(
+                    None if isinstance(x, (float, int)) and np.isnan(x) else x
+                    for x in record.tolist()
+                )
+                for record in df.to_records(index=False)
+            ],
+            df.columns.tolist(),
+        )
+
+    batch = Batch(data=df, batch_definition=batch_definition)  # type: ignore[arg-type] # got DataFrame
+    execution_engine: SparkDFExecutionEngine = build_spark_engine(
+        spark=spark,
+        df=df,
+        batch_id=batch.id,
+    )
+
+    if context is None:
+        context = gx.get_context(mode="ephemeral")
+
+    return Validator(
+        execution_engine=execution_engine,
+        batches=[
+            batch,
+        ],
+        data_context=context,
+    )
+
+
+def build_pandas_engine(
+    df: pd.DataFrame,
+) -> PandasExecutionEngine:
+    batch = Batch(data=df)  # type: ignore[arg-type] # FIXME CoP
+    execution_engine = PandasExecutionEngine(batch_data_dict={batch.id: batch.data})
+    return execution_engine
+
+
+def build_sa_execution_engine(  # noqa: PLR0913 # FIXME CoP
+    df: pd.DataFrame,
+    sa: ModuleType,
+    schema: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    if_exists: str = "replace",
+    index: bool = False,
+    dtype: Optional[dict] = None,
+    table_name: str = "test",
+) -> SqlAlchemyExecutionEngine:
+    # noinspection PyUnresolvedReferences
+    sqlalchemy_engine: sqlalchemy.Engine = close_connections_when_collected(
+        sa.create_engine("sqlite://", echo=False)
+    )
+    add_dataframe_to_db(
+        df=df,
+        name=table_name,
+        con=sqlalchemy_engine,
+        schema=schema,
+        if_exists=if_exists,
+        index=index,
+        dtype=dtype,
+    )
+
+    execution_engine: SqlAlchemyExecutionEngine = SqlAlchemyExecutionEngine(
+        engine=sqlalchemy_engine
+    )
+    batch_data = SqlAlchemyBatchData(execution_engine=execution_engine, table_name=table_name)
+    batch = Batch(data=batch_data)  # type: ignore[arg-type] # got SqlAlchemyBatchData
+
+    if batch_id is None:
+        batch_id = batch.id
+
+    execution_engine = SqlAlchemyExecutionEngine(
+        engine=sqlalchemy_engine, batch_data_dict={batch_id: batch_data}
+    )
+
+    return execution_engine
+
+
+# Builds a Spark Execution Engine
+def build_spark_engine(
+    spark: pyspark.SparkSession,
+    df: Union[pd.DataFrame, pyspark.DataFrame],
+    schema: Optional[pyspark.types.StructType] = None,
+    batch_id: Optional[str] = None,
+    batch_definition: Optional[LegacyBatchDefinition] = None,
+) -> SparkDFExecutionEngine:
+    if (
+        sum(
+            bool(x)
+            for x in [
+                batch_id is not None,
+                batch_definition is not None,
+            ]
+        )
+        != 1
+    ):
+        raise ValueError("Exactly one of batch_id or batch_definition must be specified.")  # noqa: TRY003 # FIXME CoP
+
+    if isinstance(df, pd.DataFrame):
+        if schema is None:
+            data: Union[pd.DataFrame, List[tuple]] = [
+                tuple(
+                    None if isinstance(x, (float, int)) and np.isnan(x) else x
+                    for x in record.tolist()
+                )
+                for record in df.to_records(index=False)
+            ]
+            schema = df.columns.tolist()  # type: ignore[assignment] # FIXME CoP
+        else:
+            data = df
+
+        df = spark.createDataFrame(data=data, schema=schema)  # type: ignore[type-var,arg-type] # FIXME CoP
+
+    conf: Iterable[Tuple[str, str]] = spark.sparkContext.getConf().getAll()
+    spark_config: Dict[str, Any] = dict(conf)
+    execution_engine = SparkDFExecutionEngine(
+        spark_config=spark_config,
+        batch_data_dict={
+            batch_id or cast("LegacyBatchDefinition", batch_definition).id: df,
+        },
+    )
+    return execution_engine
+
+
+def candidate_getter_is_on_temporary_notimplemented_list(context, getter):
+    if context in ["sqlite"]:
+        return getter in ["get_column_modes", "get_column_stdev"]
+    if context in ["postgresql", "mysql", "mssql"]:
+        return getter in ["get_column_modes"]
+    if context == "spark":
+        return False
+
+
+def candidate_test_is_on_temporary_notimplemented_list_v2_api(context, expectation_type):
+    if context in SQL_DIALECT_NAMES:
+        expectations_not_implemented_v2_sql = [
+            "expect_column_values_to_be_increasing",
+            "expect_column_values_to_be_decreasing",
+            "expect_column_values_to_match_strftime_format",
+            "expect_column_values_to_be_dateutil_parseable",
+            "expect_column_values_to_be_json_parseable",
+            "expect_column_values_to_match_json_schema",
+            "expect_column_stdev_to_be_between",
+            "expect_column_most_common_value_to_be_in_set",
+            "expect_column_bootstrapped_ks_test_p_value_to_be_greater_than",
+            "expect_column_parameterized_distribution_ks_test_p_value_to_be_greater_than",
+            "expect_column_pair_values_to_be_equal",
+            "expect_column_pair_values_a_to_be_greater_than_b",
+            "expect_select_column_values_to_be_unique_within_record",
+            "expect_compound_columns_to_be_unique",
+            "expect_multicolumn_values_to_be_unique",
+            "expect_column_pair_cramers_phi_value_to_be_less_than",
+            "expect_multicolumn_sum_to_equal",
+            "expect_column_value_z_scores_to_be_less_than",
+        ]
+        if context in ["bigquery"]:
+            ###
+            # NOTE: 202201 - Will: Expectations below are temporarily not being tested
+            # with BigQuery in V2 API
+            ###
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_kl_divergence_to_be_less_than"
+            )  # TODO: unique to bigquery  -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_chisquare_test_p_value_to_be_greater_than"
+            )  # TODO: unique to bigquery  -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_values_to_be_between"
+            )  # TODO: error unique to bigquery -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_values_to_be_in_set"
+            )  # TODO: error unique to bigquery -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_values_to_be_in_type_list"
+            )  # TODO: error unique to bigquery -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_values_to_be_of_type"
+            )  # TODO: error unique to bigquery -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_values_to_match_like_pattern_list"
+            )  # TODO: error unique to bigquery -- https://github.com/great-expectations/great_expectations/issues/3261
+            expectations_not_implemented_v2_sql.append(
+                "expect_column_values_to_not_match_like_pattern_list"
+            )  # TODO: error unique to bigquery -- https://github.com/great-expectations/great_expectations/issues/3261
+        return expectation_type in expectations_not_implemented_v2_sql
+
+    if context == "SparkDFDataset":
+        return expectation_type in [
+            "expect_column_values_to_be_dateutil_parseable",
+            "expect_column_values_to_be_json_parseable",
+            "expect_column_bootstrapped_ks_test_p_value_to_be_greater_than",
+            "expect_column_parameterized_distribution_ks_test_p_value_to_be_greater_than",
+            "expect_compound_columns_to_be_unique",
+            "expect_column_pair_cramers_phi_value_to_be_less_than",
+            "expect_table_row_count_to_equal_other_table",
+            "expect_column_value_z_scores_to_be_less_than",
+        ]
+    if context == "PandasDataset":
+        return expectation_type in [
+            "expect_table_row_count_to_equal_other_table",
+            "expect_column_value_z_scores_to_be_less_than",
+        ]
+    return False
+
+
+# We cache whether we can successfully connect to a test backend so we don't have to
+# validate we can connect over and over again.
+_successful_backend_connection = set()
+
+
+def build_test_backends_list(  # noqa: C901, PLR0912, PLR0913, PLR0915 # FIXME CoP
+    include_pandas=True,
+    include_spark=False,
+    include_sqlalchemy=True,
+    include_sqlite=True,
+    include_postgresql=False,
+    include_mysql=False,
+    include_sql_server=False,
+    include_bigquery=False,
+    include_aws=False,
+    include_clickhouse=False,
+    include_trino=False,
+    include_azure=False,
+    include_redshift=False,
+    include_athena=False,
+    include_snowflake=False,
+    raise_exceptions_for_backends: bool = True,
+) -> List[str]:
+    """Attempts to identify supported backends by checking which imports are available."""
+
+    test_backends = []
+
+    if include_pandas:
+        test_backends += ["pandas"]
+
+    if include_spark:
+        from great_expectations.compatibility import pyspark
+
+        if not pyspark.pyspark:
+            if raise_exceptions_for_backends is True:
+                raise ValueError("spark tests are requested, but pyspark is not installed")  # noqa: TRY003 # FIXME CoP
+            else:
+                logger.warning("spark tests are requested, but pyspark is not installed")
+        else:
+            test_backends += ["spark"]
+
+    db_hostname = os.getenv("GE_TEST_LOCAL_DB_HOSTNAME", "localhost")
+    if include_sqlalchemy:
+        sa: Optional[ModuleType] = import_library_module(module_name="sqlalchemy")
+        if sa is None:
+            if raise_exceptions_for_backends is True:
+                raise ImportError("sqlalchemy tests are requested, but sqlalchemy in not installed")  # noqa: TRY003 # FIXME CoP
+            else:
+                logger.warning("sqlalchemy tests are requested, but sqlalchemy in not installed")
+            return test_backends
+
+        if include_sqlite:
+            test_backends += ["sqlite"]
+
+        if include_postgresql:
+            ###
+            # NOTE: 20190918 - JPC: Since I've had to relearn this a few times, a note here.
+            # SQLALCHEMY coerces postgres DOUBLE_PRECISION to float, which loses precision
+            # round trip compared to NUMERIC, which stays as a python DECIMAL
+
+            # Be sure to ensure that tests (and users!) understand that subtlety,
+            # which can be important for distributional expectations, for example.
+            ###
+            connection_string = f"postgresql://postgres@{db_hostname}/test_ci"
+            checker = LockingConnectionCheck(sa, connection_string)
+            if checker.is_valid() is True:
+                test_backends += ["postgresql"]
+            else:  # noqa: PLR5501 # FIXME CoP
+                if raise_exceptions_for_backends is True:
+                    raise ValueError(  # noqa: TRY003 # FIXME CoP
+                        f"backend-specific tests are requested, but unable to connect to the database at "  # noqa: E501 # FIXME CoP
+                        f"{connection_string}"
+                    )
+                else:
+                    logger.warning(
+                        f"backend-specific tests are requested, but unable to connect to the database at "  # noqa: E501 # FIXME CoP
+                        f"{connection_string}"
+                    )
+
+        if include_mysql:
+            try:
+                engine = sa.create_engine(f"mysql+pymysql://root@{db_hostname}/test_ci")
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, SQLAlchemyError):
+                if raise_exceptions_for_backends is True:
+                    raise ImportError(  # noqa: TRY003 # FIXME CoP
+                        "mysql tests are requested, but unable to connect to the mysql database at "
+                        f"'mysql+pymysql://root@{db_hostname}/test_ci'"
+                    )
+                else:
+                    logger.warning(
+                        "mysql tests are requested, but unable to connect to the mysql database at "
+                        f"'mysql+pymysql://root@{db_hostname}/test_ci'"
+                    )
+            else:
+                test_backends += ["mysql"]
+
+        if include_sql_server:
+            connection_string = (
+                "mssql+pyodbc://sa:ReallyStrongPwd1234%^&*@127.0.0.1:1433/test_ci"
+                "?driver=ODBC Driver 18 for SQL Server&charset=utf8"
+                "&autocommit=true&TrustServerCertificate=yes"
+            )
+            try:
+                engine = sa.create_engine(connection_string)
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, sa.exc.SQLAlchemyError):
+                if raise_exceptions_for_backends is True:
+                    raise ImportError(  # noqa: TRY003 # FIXME CoP
+                        "SQL Server tests are requested, but unable to connect"
+                        f" to the SQL Server database at {connection_string}",
+                    )
+                else:
+                    logger.warning(
+                        "SQL Server tests are requested, but unable to connect"
+                        f" to the SQL Server database at {connection_string}",
+                    )
+            else:
+                test_backends += ["mssql"]
+
+        if include_bigquery:
+            # noinspection PyUnresolvedReferences
+            try:
+                engine = _create_bigquery_engine()
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, ValueError, sa.exc.SQLAlchemyError) as e:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("bigquery tests are requested, but unable to connect") from e  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning(f"bigquery tests are requested, but unable to connect; {e!r}")
+            else:
+                test_backends += ["bigquery"]
+
+        if include_redshift or include_athena:
+            include_aws = True
+
+        if include_aws:
+            # TODO need to come up with a better way to do this check.
+            # currently this checks the 3 default ENV variables that boto3 looks for
+            aws_access_key_id: Optional[str] = os.getenv("AWS_ACCESS_KEY_ID")
+            aws_secret_access_key: Optional[str] = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_session_token: Optional[str] = os.getenv("AWS_SESSION_TOKEN")
+            aws_config_file: Optional[str] = os.getenv("AWS_CONFIG_FILE")
+            if (
+                not aws_access_key_id
+                and not aws_secret_access_key
+                and not aws_session_token
+                and not aws_config_file
+            ):
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("AWS tests are requested, but credentials were not set up")  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning("AWS tests are requested, but credentials were not set up")
+
+        if include_clickhouse:
+            # noinspection PyUnresolvedReferences
+            try:
+                engine = _create_clickhouse_engine(db_hostname)
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, ValueError, sa.exc.SQLAlchemyError) as e:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError(  # noqa: TRY003 # FIXME CoP
+                        "clickhouse tests are requested, but unable to connect"
+                    ) from e
+                else:
+                    logger.warning(f"clickhouse tests are requested, but unable to connect; {e!r}")
+            else:
+                test_backends += ["clickhouse"]
+
+        if include_trino:
+            # noinspection PyUnresolvedReferences
+            try:
+                engine = _create_trino_engine(db_hostname)
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, ValueError, sa.exc.SQLAlchemyError) as e:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("trino tests are requested, but unable to connect") from e  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning(f"trino tests are requested, but unable to connect; {e!r}")
+            else:
+                test_backends += ["trino"]
+
+        if include_azure:
+            azure_connection_string: Optional[str] = os.getenv("AZURE_CONNECTION_STRING")
+            azure_credential: Optional[str] = os.getenv("AZURE_CREDENTIAL")
+            azure_access_key: Optional[str] = os.getenv("AZURE_ACCESS_KEY")
+            if not azure_access_key and not azure_connection_string and not azure_credential:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("Azure tests are requested, but credentials were not set up")  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning("Azure tests are requested, but credentials were not set up")
+            test_backends += ["azure"]
+
+        if include_redshift:
+            # noinspection PyUnresolvedReferences
+            try:
+                if "redshift" not in _successful_backend_connection:
+                    engine = _create_redshift_engine()
+                    conn = engine.connect()
+                    conn.close()
+                    _successful_backend_connection.add("redshift")
+            except (ImportError, ValueError, sa.exc.SQLAlchemyError) as e:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("redshift tests are requested, but unable to connect") from e  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning(f"redshift tests are requested, but unable to connect; {e!r}")
+            else:
+                test_backends += ["redshift"]
+
+        if include_athena:
+            # noinspection PyUnresolvedReferences
+            try:
+                engine = _create_athena_engine()
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, ValueError, sa.exc.SQLAlchemyError) as e:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("athena tests are requested, but unable to connect") from e  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning(f"athena tests are requested, but unable to connect; {e!r}")
+            else:
+                test_backends += ["athena"]
+
+        if include_snowflake:
+            # noinspection PyUnresolvedReferences
+            try:
+                engine = _create_snowflake_engine()
+                conn = engine.connect()
+                conn.close()
+            except (ImportError, ValueError, sa.exc.SQLAlchemyError) as e:
+                if raise_exceptions_for_backends is True:
+                    raise ImportError("snowflake tests are requested, but unable to connect") from e  # noqa: TRY003 # FIXME CoP
+                else:
+                    logger.warning(f"snowflake tests are requested, but unable to connect; {e!r}")
+            else:
+                test_backends += ["snowflake"]
+
+    return test_backends
+
+
+def generate_expectation_tests(  # noqa: C901, PLR0912, PLR0913, PLR0915 # FIXME CoP
+    expectation_type: str,
+    test_data_cases: List[ExpectationTestDataCases],
+    execution_engine_diagnostics: ExpectationExecutionEngineDiagnostics,
+    raise_exceptions_for_backends: bool = False,
+    ignore_suppress: bool = False,
+    ignore_only_for: bool = False,
+    debug_logger: Optional[logging.Logger] = None,
+    only_consider_these_backends: Optional[List[str]] = None,
+    context: Optional[AbstractDataContext] = None,
+):
+    """Determine tests to run
+
+    :param expectation_type: snake_case name of the expectation type
+    :param test_data_cases: list of ExpectationTestDataCases that has data, tests, schemas, and backends to use
+    :param execution_engine_diagnostics: ExpectationExecutionEngineDiagnostics object specifying the engines the expectation is implemented for
+    :param raise_exceptions_for_backends: bool object that when True will raise an Exception if a backend fails to connect
+    :param ignore_suppress: bool object that when True will ignore the suppress_test_for list on Expectation sample tests
+    :param ignore_only_for: bool object that when True will ignore the only_for list on Expectation sample tests
+    :param debug_logger: optional logging.Logger object to use for sending debug messages to
+    :param only_consider_these_backends: optional list of backends to consider
+    :param context Instance of any child of "AbstractDataContext" class
+    :return: list of parametrized tests with loaded validators and accessible backends
+    """  # noqa: E501 # FIXME CoP
+    _debug = lambda x: x  # noqa: E731 # FIXME CoP
+    _error = lambda x: x  # noqa: E731 # FIXME CoP
+    if debug_logger:
+        _debug = lambda x: debug_logger.debug(  # noqa: E731 # FIXME CoP
+            f"(generate_expectation_tests) {x}"
+        )
+        _error = lambda x: debug_logger.error(  # noqa: E731 # FIXME CoP
+            f"(generate_expectation_tests) {x}"
+        )
+
+    dialects_to_include = {}
+    engines_to_include = {}
+    engines_implemented = []
+
+    if execution_engine_diagnostics.PandasExecutionEngine:
+        engines_implemented.append("pandas")
+    if execution_engine_diagnostics.SparkDFExecutionEngine:
+        engines_implemented.append("spark")
+    if execution_engine_diagnostics.SqlAlchemyExecutionEngine:
+        engines_implemented.append("sqlalchemy")
+    _debug(f"Implemented engines for {expectation_type}: {', '.join(engines_implemented)}")
+
+    if only_consider_these_backends:
+        _debug(f"only_consider_these_backends -> {only_consider_these_backends}")
+        for backend in only_consider_these_backends:
+            if backend in BACKEND_TO_ENGINE_NAME_DICT:
+                _engine = BACKEND_TO_ENGINE_NAME_DICT[backend]
+                if _engine == "sqlalchemy" and "sqlalchemy" in engines_implemented:
+                    engines_to_include[_engine] = True
+                    dialects_to_include[backend] = True
+                elif (_engine == "pandas" and "pandas" in engines_implemented) or (
+                    _engine == "spark" and "spark" in engines_implemented
+                ):
+                    engines_to_include[_engine] = True
+    else:
+        engines_to_include["pandas"] = execution_engine_diagnostics.PandasExecutionEngine
+        engines_to_include["spark"] = execution_engine_diagnostics.SparkDFExecutionEngine
+        engines_to_include["sqlalchemy"] = execution_engine_diagnostics.SqlAlchemyExecutionEngine
+        if engines_to_include.get("sqlalchemy") is True and raise_exceptions_for_backends is False:
+            dialects_to_include = dict.fromkeys(SQL_DIALECT_NAMES, True)
+
+    _debug(f"Attempting engines ({engines_to_include}) and dialects ({dialects_to_include})")
+
+    backends = build_test_backends_list(
+        include_pandas=engines_to_include.get("pandas", False),
+        include_spark=engines_to_include.get("spark", False),
+        include_sqlalchemy=engines_to_include.get("sqlalchemy", False),
+        include_sqlite=dialects_to_include.get("sqlite", False),
+        include_postgresql=dialects_to_include.get("postgresql", False),
+        include_mysql=dialects_to_include.get("mysql", False),
+        include_sql_server=dialects_to_include.get("mssql", False),
+        include_bigquery=dialects_to_include.get("bigquery", False),
+        include_clickhouse=dialects_to_include.get("clickhouse", False),
+        include_trino=dialects_to_include.get("trino", False),
+        include_redshift=dialects_to_include.get("redshift", False),
+        include_athena=dialects_to_include.get("athena", False),
+        include_snowflake=dialects_to_include.get("snowflake", False),
+        raise_exceptions_for_backends=raise_exceptions_for_backends,
+    )
+
+    _debug(f"Successfully connecting backends -> {backends}")
+
+    if not backends:
+        _debug("No suitable backends to connect to")
+        return []
+
+    parametrized_tests = []
+    num_test_data_cases = len(test_data_cases)
+    for i, d in enumerate(test_data_cases, 1):
+        _debug(f"test_data_case {i}/{num_test_data_cases}")
+        d = copy.deepcopy(d)  # noqa: PLW2901 # FIXME CoP
+        titles = []
+        only_fors = []
+        suppress_test_fors = []
+        for _test_case in d.tests:
+            titles.append(_test_case.title)
+            only_fors.append(_test_case.only_for)
+            suppress_test_fors.append(_test_case.suppress_test_for)
+        _debug(f"titles -> {titles}")
+        _debug(
+            f"only_fors -> {only_fors}  suppress_test_fors -> {suppress_test_fors}  only_consider_these_backends -> {only_consider_these_backends}"  # noqa: E501 # FIXME CoP
+        )
+        for c in backends:
+            _debug(f"Getting validators with data: {c}")
+
+            tests_suppressed_for_backend = [
+                c in sup or ("sqlalchemy" in sup and c in SQL_DIALECT_NAMES) if sup else False
+                for sup in suppress_test_fors
+            ]
+            only_fors_ok = []
+            for i, only_for in enumerate(only_fors):  # noqa: PLW2901 # FIXME CoP
+                if not only_for:
+                    only_fors_ok.append(True)
+                    continue
+                if c in only_for or ("sqlalchemy" in only_for and c in SQL_DIALECT_NAMES):
+                    only_fors_ok.append(True)
+                else:
+                    only_fors_ok.append(False)
+            if tests_suppressed_for_backend and all(tests_suppressed_for_backend):
+                _debug(f"All {len(tests_suppressed_for_backend)} tests are SUPPRESSED for {c}")
+                continue
+            if not any(only_fors_ok):
+                _debug(f"No tests are allowed for {c}")
+                _debug(f"c -> {c}  only_fors -> {only_fors}  only_fors_ok -> {only_fors_ok}")
+                continue
+
+            datasets = []
+
+            # noinspection PyBroadException,PyExceptClausesOrder
+            try:
+                if isinstance(d["data"], list):
+                    sqlite_db_path = generate_sqlite_db_path()
+                    sub_index: int = 1  # additional index needed when dataset is a list
+                    for sub_index, dataset in enumerate(d["data"]):
+                        dataset_name = generate_dataset_name_from_expectation_name(
+                            dataset=dataset,
+                            expectation_type=expectation_type,
+                            index=i,
+                            sub_index=sub_index,
+                        )
+                        datasets.append(
+                            get_test_validator_with_data(
+                                execution_engine=c,
+                                data=dataset["data"],
+                                schemas=dataset.get("schemas"),
+                                table_name=dataset_name,
+                                sqlite_db_path=sqlite_db_path,
+                                extra_debug_info=expectation_type,
+                                debug_logger=debug_logger,
+                                context=context,
+                            )
+                        )
+                    validator_with_data = datasets[0]
+                else:
+                    dataset_name = generate_dataset_name_from_expectation_name(
+                        dataset=d,  # type: ignore[arg-type] # should be dict but got ExpectationTestDataCases
+                        expectation_type=expectation_type,
+                        index=i,
+                    )
+                    dataset_name = d.get("dataset_name", f"{expectation_type}_dataset_{i}")
+                    validator_with_data = get_test_validator_with_data(
+                        execution_engine=c,
+                        data=d["data"],
+                        schemas=d["schemas"],
+                        table_name=dataset_name,
+                        extra_debug_info=expectation_type,
+                        debug_logger=debug_logger,
+                        context=context,
+                    )
+            except Exception as e:
+                # # Adding these print statements for build_gallery.py's console output
+                # print("\n\n[[ Problem calling get_test_validator_with_data ]]")
+                # print(f"expectation_type -> {expectation_type}")
+                # print(f"c -> {c}\ne -> {e}")
+                # print(f"d['data'] -> {d.get('data')}")
+                # print(f"d['schemas'] -> {d.get('schemas')}")
+                # print("DataFrame from data without any casting/conversion ->")
+                # print(pd.DataFrame(d.get("data")))
+                # print()
+
+                if "data_alt" in d and d["data_alt"] is not None:
+                    # print("There is alternate data to try!!")
+                    # noinspection PyBroadException
+                    try:
+                        if isinstance(d["data_alt"], list):
+                            sqlite_db_path = generate_sqlite_db_path()
+                            for dataset in d["data_alt"]:
+                                datasets.append(
+                                    get_test_validator_with_data(
+                                        execution_engine=c,
+                                        data=dataset["data_alt"],
+                                        schemas=dataset.get("schemas"),
+                                        table_name=dataset.get("dataset_name"),
+                                        sqlite_db_path=sqlite_db_path,
+                                        extra_debug_info=expectation_type,
+                                        debug_logger=debug_logger,
+                                        context=context,
+                                    )
+                                )
+                            validator_with_data = datasets[0]
+                        else:
+                            validator_with_data = get_test_validator_with_data(
+                                execution_engine=c,
+                                data=d["data_alt"],
+                                schemas=d["schemas"],
+                                table_name=d["dataset_name"],
+                                extra_debug_info=expectation_type,
+                                debug_logger=debug_logger,
+                                context=context,
+                            )
+                    except Exception:
+                        # print(
+                        #     "\n[[ STILL Problem calling get_test_validator_with_data ]]"
+                        # )
+                        # print(f"expectation_type -> {expectation_type}")
+                        # print(f"c -> {c}\ne2 -> {e2}")
+                        # print(f"d['data_alt'] -> {d.get('data_alt')}")
+                        # print(
+                        #     "DataFrame from data_alt without any casting/conversion ->"
+                        # )
+                        # print(pd.DataFrame(d.get("data_alt")))
+                        # print()
+                        _error(
+                            f"PROBLEM with get_test_validator_with_data in backend {c} for {expectation_type} from data AND data_alt {repr(e)[:300]}"  # noqa: E501 # FIXME CoP
+                        )
+                        parametrized_tests.append(
+                            {
+                                "expectation_type": expectation_type,
+                                "validator_with_data": None,
+                                "error": repr(e)[:300],
+                                "test": None,
+                                "backend": c,
+                            }
+                        )
+                        continue
+                    else:
+                        # print("\n[[ The alternate data worked!! ]]\n")
+                        _debug(
+                            f"Needed to use data_alt for backend {c}, but it worked for {expectation_type}"  # noqa: E501 # FIXME CoP
+                        )
+                else:
+                    _error(
+                        f"PROBLEM with get_test_validator_with_data in backend {c} for {expectation_type} from data (no data_alt to try) {repr(e)[:300]}"  # noqa: E501 # FIXME CoP
+                    )
+                    parametrized_tests.append(
+                        {
+                            "expectation_type": expectation_type,
+                            "validator_with_data": None,
+                            "error": repr(e)[:300],
+                            "test": None,
+                            "backend": c,
+                        }
+                    )
+                    continue
+
+            for test in d["tests"]:
+                if not should_we_generate_this_test(
+                    backend=c,
+                    expectation_test_case=test,
+                    ignore_suppress=ignore_suppress,
+                    ignore_only_for=ignore_only_for,
+                    extra_debug_info=expectation_type,
+                    debug_logger=debug_logger,
+                ):
+                    continue
+
+                parametrized_tests.append(
+                    {
+                        "expectation_type": expectation_type,
+                        "validator_with_data": validator_with_data,
+                        "test": test,
+                        "backend": c,
+                    }
+                )
+
+    return parametrized_tests
+
+
+def should_we_generate_this_test(  # noqa: C901, PLR0911, PLR0912, PLR0913 # FIXME CoP
+    backend: str,
+    expectation_test_case: ExpectationTestCase,
+    ignore_suppress: bool = False,
+    ignore_only_for: bool = False,
+    extra_debug_info: str = "",
+    debug_logger: Optional[logging.Logger] = None,
+):
+    _debug = lambda x: x  # noqa: E731 # FIXME CoP
+    if debug_logger:
+        _debug = lambda x: debug_logger.debug(  # noqa: E731 # FIXME CoP
+            f"(should_we_generate_this_test) {x}"
+        )
+
+    # backend will only ever be pandas, spark, or a specific SQL dialect, but sometimes
+    # suppress_test_for or only_for may include "sqlalchemy"
+    #
+    # There is one Expectation (expect_column_values_to_be_of_type) that has some tests that
+    # are only for specific versions of pandas
+    #   - only_for can be any of: pandas, pandas_022, pandas_023, pandas>=024
+    #   - See: https://github.com/great-expectations/great_expectations/blob/7766bb5caa4e0e5b22fa3b3a5e1f2ac18922fdeb/tests/test_definitions/test_expectations_cfe.py#L176-L185
+    if backend in expectation_test_case.suppress_test_for:
+        if ignore_suppress:
+            _debug(
+                f"Should be suppressing {expectation_test_case.title} for {backend}, but ignore_suppress is True | {extra_debug_info}"  # noqa: E501 # FIXME CoP
+            )
+            return True
+        else:
+            _debug(
+                f"Backend {backend} is suppressed for test {expectation_test_case.title}: | {extra_debug_info}"  # noqa: E501 # FIXME CoP
+            )
+            return False
+    if "sqlalchemy" in expectation_test_case.suppress_test_for and backend in SQL_DIALECT_NAMES:
+        if ignore_suppress:
+            _debug(
+                f"Should be suppressing {expectation_test_case.title} for sqlalchemy (including {backend}), but ignore_suppress is True | {extra_debug_info}"  # noqa: E501 # FIXME CoP
+            )
+            return True
+        else:
+            _debug(
+                f"All sqlalchemy (including {backend}) is suppressed for test: {expectation_test_case.title} | {extra_debug_info}"  # noqa: E501 # FIXME CoP
+            )
+            return False
+    if expectation_test_case.only_for is not None and expectation_test_case.only_for:
+        if backend not in expectation_test_case.only_for:
+            if "sqlalchemy" in expectation_test_case.only_for and backend in SQL_DIALECT_NAMES:
+                return True
+            elif backend == "pandas":
+                major, minor, *_ = pd.__version__.split(".")
+                if (
+                    "pandas_022" in expectation_test_case.only_for
+                    or "pandas_023" in expectation_test_case.only_for
+                ):
+                    if major == "0" and minor in ["22", "23"]:
+                        return True
+                elif "pandas>=024" in expectation_test_case.only_for:
+                    if (major == "0" and int(minor) >= 24) or int(  # noqa: PLR2004 # FIXME CoP
+                        major
+                    ) >= 1:
+                        return True
+
+            if ignore_only_for:
+                _debug(
+                    f"Should normally not run test {expectation_test_case.title} for {backend}, but ignore_only_for is True | {extra_debug_info}"  # noqa: E501 # FIXME CoP
+                )
+                return True
+            else:
+                _debug(
+                    f"Only {expectation_test_case.only_for} allowed (not {backend}) for test: {expectation_test_case.title} | {extra_debug_info}"  # noqa: E501 # FIXME CoP
+                )
+                return False
+
+    return True
+
+
+def sort_unexpected_values(test_value_list, result_value_list):
+    # check if value can be sorted; if so, sort so arbitrary ordering of results does not cause failure  # noqa: E501 # FIXME CoP
+    if (isinstance(test_value_list, list)) & (len(test_value_list) >= 1):
+        # __lt__ is not implemented for python dictionaries making sorting trickier
+        # in our case, we will sort on the values for each key sequentially
+        if isinstance(test_value_list[0], dict):
+            test_value_list = sorted(
+                test_value_list,
+                key=lambda x: tuple(x[k] for k in list(test_value_list[0].keys())),
+            )
+            result_value_list = sorted(
+                result_value_list,
+                key=lambda x: tuple(x[k] for k in list(test_value_list[0].keys())),
+            )
+        # if python built-in class has __lt__ then sorting can always work this way
+        elif type(test_value_list[0].__lt__(test_value_list[0])) is not type(NotImplemented):
+            test_value_list = sorted(test_value_list, key=str)
+            result_value_list = sorted(result_value_list, key=str)
+
+    return test_value_list, result_value_list
+
+
+def evaluate_json_test_v3_api(  # noqa: C901, PLR0912, PLR0913 # FIXME CoP
+    validator: Validator,
+    expectation_type: str,
+    test: Dict[str, Any],
+    raise_exception: bool = True,
+    debug_logger: Optional[Logger] = None,
+    pk_column: bool = False,
+):
+    """
+    This method will evaluate the result of a test build using the Great Expectations json test format.
+
+    NOTE: Tests can be suppressed for certain data types if the test contains the Key 'suppress_test_for' with a list
+        of DataAsset types to suppress, such as ['SQLAlchemy', 'Pandas'].
+
+    :param validator: (Validator) reference to "Validator" (key object that resolves Metrics and validates Expectations)
+    :param expectation_type: (string) the name of the expectation to be run using the test input
+    :param test: (dict) a dictionary containing information for the test to be run. The dictionary must include:
+        - title: (string) the name of the test
+        - exact_match_out: (boolean) If true, match the 'out' dictionary exactly against the result of the expectation
+        - in: (dict or list) a dictionary of keyword arguments to use to evaluate the expectation or a list of positional arguments
+        - out: (dict) the dictionary keys against which to make assertions. Unless exact_match_out is true, keys must\
+            come from the following list:
+              - success
+              - observed_value
+              - unexpected_index_list
+              - unexpected_list
+              - details
+              - traceback_substring (if present, the string value will be expected as a substring of the exception_traceback)
+    :param raise_exception: (bool) If False, capture any failed AssertionError from the call to check_json_test_result and return with validation_result
+    :param debug_logger: logger instance or None
+    :param pk_column: If True, then the primary-key column has been defined in the json test data.
+    :return: Tuple(ExpectationValidationResult, error_message, stack_trace). asserts correctness of results.
+    """  # noqa: E501 # FIXME CoP
+    if debug_logger is not None:
+        _debug = lambda x: debug_logger.debug(  # noqa: E731 # FIXME CoP
+            f"(evaluate_json_test_v3_api) {x}"
+        )
+    else:
+        _debug = lambda x: x  # noqa: E731 # FIXME CoP
+
+    expectation_suite = ExpectationSuite("json_test_suite")
+    # noinspection PyProtectedMember
+    validator._initialize_expectations(expectation_suite=expectation_suite)
+    # validator.set_default_expectation_argument("result_format", "COMPLETE")
+
+    if "title" not in test:
+        raise ValueError("Invalid test configuration detected: 'title' is required.")  # noqa: TRY003 # FIXME CoP
+
+    if "exact_match_out" not in test:
+        raise ValueError("Invalid test configuration detected: 'exact_match_out' is required.")  # noqa: TRY003 # FIXME CoP
+
+    if "input" not in test:
+        if "in" in test:
+            test["input"] = test["in"]
+        else:
+            raise ValueError("Invalid test configuration detected: 'input' is required.")  # noqa: TRY003 # FIXME CoP
+
+    if "output" not in test:
+        if "out" in test:
+            test["output"] = test["out"]
+        else:
+            raise ValueError("Invalid test configuration detected: 'output' is required.")  # noqa: TRY003 # FIXME CoP
+
+    kwargs = copy.deepcopy(test["input"])
+    error_message = None
+    stack_trace = None
+
+    try:
+        if isinstance(test["input"], list):
+            result = getattr(validator, expectation_type)(*kwargs)
+        # As well as keyword arguments
+        else:
+            if pk_column:
+                runtime_kwargs = {
+                    "result_format": {
+                        "result_format": "COMPLETE",
+                        "unexpected_index_column_names": ["pk_index"],
+                    },
+                }
+            else:
+                runtime_kwargs = {
+                    "result_format": {
+                        "result_format": "COMPLETE",
+                    },
+                }
+            runtime_kwargs.update(kwargs)
+            result = getattr(validator, expectation_type)(**runtime_kwargs)
+    except (
+        MetricProviderError,
+        MetricResolutionError,
+        InvalidExpectationConfigurationError,
+    ) as e:
+        if raise_exception:
+            raise
+        error_message = str(e)
+        stack_trace = (traceback.format_exc(),)
+        result = None
+    else:
+        try:
+            check_json_test_result(
+                test=test,
+                result=result,
+                pk_column=pk_column,
+            )
+        except Exception as e:
+            _debug(f"RESULT: {result['result']}  |  CONFIG: {result['expectation_config']}")
+            if raise_exception:
+                raise
+            error_message = str(e)
+            stack_trace = (traceback.format_exc(),)
+
+    return (result, error_message, stack_trace)
+
+
+def check_json_test_result(  # noqa: C901, PLR0912, PLR0915 # FIXME CoP
+    test, result, pk_column=False
+) -> None:
+    # check for id_pk results in cases where pk_column is true and unexpected_index_list already exists  # noqa: E501 # FIXME CoP
+    # this will work for testing since result_format is COMPLETE
+    if pk_column:
+        if not result["success"]:
+            if "unexpected_index_list" in result["result"]:
+                assert "unexpected_index_query" in result["result"]
+
+    if "unexpected_list" in result["result"]:
+        if ("result" in test["output"]) and ("unexpected_list" in test["output"]["result"]):
+            (
+                test["output"]["result"]["unexpected_list"],
+                result["result"]["unexpected_list"],
+            ) = sort_unexpected_values(
+                test["output"]["result"]["unexpected_list"],
+                result["result"]["unexpected_list"],
+            )
+        elif "unexpected_list" in test["output"]:
+            (
+                test["output"]["unexpected_list"],
+                result["result"]["unexpected_list"],
+            ) = sort_unexpected_values(
+                test["output"]["unexpected_list"],
+                result["result"]["unexpected_list"],
+            )
+
+    if "partial_unexpected_list" in result["result"]:
+        if ("result" in test["output"]) and ("partial_unexpected_list" in test["output"]["result"]):
+            (
+                test["output"]["result"]["partial_unexpected_list"],
+                result["result"]["partial_unexpected_list"],
+            ) = sort_unexpected_values(
+                test["output"]["result"]["partial_unexpected_list"],
+                result["result"]["partial_unexpected_list"],
+            )
+        elif "partial_unexpected_list" in test["output"]:
+            (
+                test["output"]["partial_unexpected_list"],
+                result["result"]["partial_unexpected_list"],
+            ) = sort_unexpected_values(
+                test["output"]["partial_unexpected_list"],
+                result["result"]["partial_unexpected_list"],
+            )
+
+    # Determine if np.allclose(..) might be needed for float comparison
+    try_allclose = False
+    if "observed_value" in test["output"]:
+        if RX_FLOAT.match(repr(test["output"]["observed_value"])):
+            try_allclose = True
+
+    # Check results
+    if test["exact_match_out"] is True:
+        if "result" in result and "observed_value" in result["result"]:
+            if isinstance(result["result"]["observed_value"], (np.floating, float)):
+                assert np.allclose(
+                    result["result"]["observed_value"],
+                    expectationValidationResultSchema.load(test["output"])["result"][
+                        "observed_value"
+                    ],
+                    rtol=RTOL,
+                    atol=ATOL,
+                ), (
+                    f"(RTOL={RTOL}, ATOL={ATOL}) {result['result']['observed_value']} "
+                    "not np.allclose to "
+                    f"{expectationValidationResultSchema.load(test['output'])['result']['observed_value']}"
+                )
+            else:
+                assert result == expectationValidationResultSchema.load(test["output"]), (
+                    f"{result} != {expectationValidationResultSchema.load(test['output'])}"
+                )
+        else:
+            assert result == expectationValidationResultSchema.load(test["output"]), (
+                f"{result} != {expectationValidationResultSchema.load(test['output'])}"
+            )
+    else:
+        # Convert result to json since our tests are reading from json so cannot easily contain richer types (e.g. NaN)  # noqa: E501 # FIXME CoP
+        # NOTE - 20191031 - JPC - we may eventually want to change these tests as we update our view on how  # noqa: E501 # FIXME CoP
+        # representations, serializations, and objects should interact and how much of that is shown to the user.  # noqa: E501 # FIXME CoP
+        result = result.to_json_dict()
+        for key, value in test["output"].items():
+            if key == "success":
+                if isinstance(value, (np.floating, float)):
+                    try:
+                        assert np.allclose(
+                            result["success"],
+                            value,
+                            rtol=RTOL,
+                            atol=ATOL,
+                        ), (
+                            f"(RTOL={RTOL}, ATOL={ATOL}) {result['success']} "
+                            f"not np.allclose to {value}"
+                        )
+                    except TypeError:
+                        assert result["success"] == value, f"{result['success']} != {value}"
+                else:
+                    assert result["success"] == value, f"{result['success']} != {value}"
+
+            elif key == "observed_value":
+                if "tolerance" in test:
+                    if isinstance(value, dict):
+                        assert set(result["result"]["observed_value"].keys()) == set(
+                            value.keys()
+                        ), (
+                            f"{set(result['result']['observed_value'].keys())} "
+                            f"!= {set(value.keys())}"
+                        )
+                        for k, v in value.items():
+                            assert np.allclose(
+                                result["result"]["observed_value"][k],
+                                v,
+                                rtol=test["tolerance"],
+                            )
+                    else:
+                        assert np.allclose(
+                            result["result"]["observed_value"],
+                            value,
+                            rtol=test["tolerance"],
+                        )
+                else:  # noqa: PLR5501 # FIXME CoP
+                    if isinstance(value, dict) and "values" in value:
+                        try:
+                            assert np.allclose(
+                                result["result"]["observed_value"]["values"],
+                                value["values"],
+                                rtol=RTOL,
+                                atol=ATOL,
+                            ), (
+                                f"(RTOL={RTOL}, ATOL={ATOL}) "
+                                f"{result['result']['observed_value']['values']} "
+                                f"not np.allclose to {value['values']}"
+                            )
+                        except TypeError as e:
+                            print(e)
+                            assert result["result"]["observed_value"] == value, (
+                                f"{result['result']['observed_value']} != {value}"
+                            )
+                    elif try_allclose:
+                        assert np.allclose(
+                            result["result"]["observed_value"],
+                            value,
+                            rtol=RTOL,
+                            atol=ATOL,
+                        ), (
+                            f"(RTOL={RTOL}, ATOL={ATOL}) {result['result']['observed_value']} "
+                            f"not np.allclose to {value}"
+                        )
+                    else:
+                        assert result["result"]["observed_value"] == value, (
+                            f"{result['result']['observed_value']} != {value}"
+                        )
+
+            # NOTE: This is a key used ONLY for testing cases where an expectation is legitimately allowed to return  # noqa: E501 # FIXME CoP
+            # any of multiple possible observed_values. expect_column_values_to_be_of_type is one such expectation.  # noqa: E501 # FIXME CoP
+            elif key == "observed_value_list":
+                assert result["result"]["observed_value"] in value
+
+            elif key == "unexpected_index_list":
+                unexpected_list = result["result"].get("unexpected_index_list")
+                if pk_column and unexpected_list:
+                    # Note that consistent ordering of unexpected_list is not a guarantee by ID/PK
+                    assert sorted(unexpected_list, key=lambda d: d["pk_index"]) == value, (
+                        f"{unexpected_list} != {value}"
+                    )
+
+            elif key == "unexpected_list":
+                try:
+                    assert result["result"]["unexpected_list"] == value, (
+                        "expected "
+                        + str(value)
+                        + " but got "
+                        + str(result["result"]["unexpected_list"])
+                    )
+                except AssertionError:
+                    if result["result"]["unexpected_list"]:
+                        if isinstance(result["result"]["unexpected_list"][0], list):
+                            unexpected_list_tup = [
+                                tuple(x) for x in result["result"]["unexpected_list"]
+                            ]
+                            assert unexpected_list_tup == value, f"{unexpected_list_tup} != {value}"
+                        else:
+                            raise
+                    else:
+                        raise
+
+            elif key == "partial_unexpected_list":
+                assert result["result"]["partial_unexpected_list"] == value, (
+                    "expected "
+                    + str(value)
+                    + " but got "
+                    + str(result["result"]["partial_unexpected_list"])
+                )
+
+            elif key == "unexpected_count":
+                pass
+
+            elif key == "details":
+                assert result["result"]["details"] == value
+
+            elif key == "value_counts":
+                for val_count in value:
+                    assert val_count in result["result"]["details"]["value_counts"]
+
+            elif key.startswith("observed_cdf"):
+                if "x_-1" in key:
+                    if key.endswith("gt"):
+                        assert result["result"]["details"]["observed_cdf"]["x"][-1] > value
+                    else:
+                        assert result["result"]["details"]["observed_cdf"]["x"][-1] == value
+                elif "x_0" in key:
+                    if key.endswith("lt"):
+                        assert result["result"]["details"]["observed_cdf"]["x"][0] < value
+                    else:
+                        assert result["result"]["details"]["observed_cdf"]["x"][0] == value
+                else:
+                    raise ValueError(f"Invalid test specification: unknown key {key} in 'out'")  # noqa: TRY003 # FIXME CoP
+
+            elif key == "traceback_substring":
+                if "raised_exception" not in result["exception_info"]:
+                    # TODO JT: This accounts for a dictionary of type {"metric_id": ExceptionInfo} path defined in  # noqa: E501 # FIXME CoP
+                    #  validator._resolve_suite_level_graph_and_process_metric_evaluation_errors
+                    for k, v in result["exception_info"].items():
+                        assert v["raised_exception"], f"{v['raised_exception']}"
+                        assert value in v["exception_traceback"], (
+                            "expected to find " + value + " in " + value["exception_traceback"]
+                        )
+                else:
+                    assert result["exception_info"]["raised_exception"], (
+                        f"{result['exception_info']['raised_exception']}"
+                    )
+                    assert value in result["exception_info"]["exception_traceback"], (
+                        "expected to find "
+                        + value
+                        + " in "
+                        + result["exception_info"]["exception_traceback"]
+                    )
+
+            elif key == "expected_partition":
+                assert np.allclose(
+                    result["result"]["details"]["expected_partition"]["bins"],
+                    value["bins"],
+                )
+                assert np.allclose(
+                    result["result"]["details"]["expected_partition"]["weights"],
+                    value["weights"],
+                )
+                if "tail_weights" in result["result"]["details"]["expected_partition"]:
+                    assert np.allclose(
+                        result["result"]["details"]["expected_partition"]["tail_weights"],
+                        value["tail_weights"],
+                    )
+
+            elif key == "observed_partition":
+                assert np.allclose(
+                    result["result"]["details"]["observed_partition"]["bins"],
+                    value["bins"],
+                )
+                assert np.allclose(
+                    result["result"]["details"]["observed_partition"]["weights"],
+                    value["weights"],
+                )
+                if "tail_weights" in result["result"]["details"]["observed_partition"]:
+                    assert np.allclose(
+                        result["result"]["details"]["observed_partition"]["tail_weights"],
+                        value["tail_weights"],
+                    )
+
+            else:
+                raise ValueError(f"Invalid test specification: unknown key {key} in 'out'")  # noqa: TRY003 # FIXME CoP
+
+
+def generate_test_table_name(
+    default_table_name_prefix: str = "test_data_",
+) -> str:
+    table_name: str = default_table_name_prefix + "".join(
+        [random.choice(string.ascii_letters + string.digits) for _ in range(8)]
+    )
+    return table_name
+
+
+def generate_dataset_name_from_expectation_name(
+    dataset: dict, expectation_type: str, index: int, sub_index: int | None = None
+) -> str:
+    """Method to generate dataset_name for tests. Will either use the name defined in the test
+    configuration ("dataset_name"), or generate one using the Expectation name and index. In cases where
+    the dataset is a list, then an additional index will be used.
+
+    Args:
+        dataset (dict): definition of data and (possibly) dataset-name
+        expectation_type (str): Expectation that the test_data is being generated for.
+        index (int): index used to number the dataset, so that we can insert a pre-defined list of tables into our db.
+        sub_index (Optional int): In cases where dataset is a list, the additional index is used.
+
+    Returns: dataset_name
+    """  # noqa: E501 # FIXME CoP
+
+    dataset_name: str
+    if not sub_index:
+        dataset_name = dataset.get("dataset_name", f"{expectation_type}_dataset_{index}")
+    else:
+        dataset_name = dataset.get(
+            "dataset_name", f"{expectation_type}_dataset_{index}_{sub_index}"
+        )
+
+    dataset_name = _check_if_valid_dataset_name(dataset_name)
+    return dataset_name
+
+
+def _check_if_valid_dataset_name(dataset_name: str) -> str:
+    """Check that dataset_name (ie. table name) is valid before adding data to table.
+
+    A valid dataset_name must:
+
+        1. Contain only alphanumeric characters and `_`
+        2. Not be longer than 63 characters (which is the limit for postgres)
+        3. Begin with letter
+
+    Args:
+        dataset_name (str): dataset_name passed in by user or generated by generate_dataset_name_from_expectation_name()
+
+    Returns: dataset_name
+
+    """  # noqa: E501 # FIXME CoP
+    if not re.match(r"^[A-Za-z0-9_]+$", dataset_name):
+        raise ExecutionEngineError(  # noqa: TRY003 # FIXME CoP
+            f"dataset_name: {dataset_name} is not valid, because it contains non-alphanumeric and _ characters."  # noqa: E501 # FIXME CoP
+            f"Please check your configuration."
+        )
+
+    if len(dataset_name) >= MAX_TABLE_NAME_LENGTH:
+        # starting from the end, so that we always get the index and sub_index
+        new_dataset_name = dataset_name[-MAX_TABLE_NAME_LENGTH:]
+        logger.info(
+            f"dataset_name: '{dataset_name}' was truncated to '{new_dataset_name}' to keep within length limits."  # noqa: E501 # FIXME CoP
+        )
+        dataset_name = new_dataset_name
+
+    while not re.match(r"^[A-Za-z]+$", dataset_name[0]):
+        dataset_name = dataset_name[1:]
+
+    return dataset_name
+
+
+def _create_bigquery_engine() -> sqlalchemy.Engine:
+    return sa.create_engine(_get_bigquery_connection_string())
+
+
+def _get_bigquery_connection_string() -> str:
+    gcp_project = os.getenv("GE_TEST_GCP_PROJECT")
+    if not gcp_project:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable GE_TEST_GCP_PROJECT is required to run BigQuery expectation tests"
+        )
+
+    return f"bigquery://{gcp_project}/{_bigquery_dataset()}"
+
+
+def _bigquery_dataset() -> str:
+    dataset = os.getenv("GE_TEST_BIGQUERY_DATASET")
+    if not dataset:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable GE_TEST_BIGQUERY_DATASET is required to run BigQuery expectation tests"  # noqa: E501 # FIXME CoP
+        )
+    return dataset
+
+
+def _get_clickhouse_connection_string(
+    hostname: str = "localhost", schema_name: str = "test"
+) -> str:
+    return f"clickhouse+native://{hostname}:9000/{schema_name}"
+
+
+def _create_clickhouse_engine(
+    hostname: str = "localhost", schema_name: str = "schema"
+) -> sqlalchemy.Engine:
+    engine = sa.create_engine(
+        _get_clickhouse_connection_string(hostname=hostname, schema_name=schema_name)
+    )
+    from clickhouse_sqlalchemy.exceptions import DatabaseException
+    from sqlalchemy import text  # noqa: TID251 # FIXME CoP
+
+    with engine.begin() as conn:
+        try:
+            schemas = conn.execute(
+                text(f"show schemas from memory like {schema_name!r}")
+            ).fetchall()
+            if (schema_name,) not in schemas:
+                conn.execute(text(f"create schema {schema_name}"))
+        except DatabaseException:
+            pass
+
+    return engine
+
+
+def _create_trino_engine(
+    hostname: str = "localhost", schema_name: str = "schema"
+) -> sqlalchemy.Engine:
+    engine = sa.create_engine(
+        _get_trino_connection_string(hostname=hostname, schema_name=schema_name)
+    )
+
+    with engine.begin() as conn:
+        try:
+            schemas = conn.execute(
+                sa.text(f"show schemas from memory like {schema_name!r}")
+            ).fetchall()
+            if (schema_name,) not in schemas:
+                conn.execute(sa.text(f"create schema {schema_name}"))
+        except trino.trinoexceptions.TrinoUserError:
+            pass
+
+    return engine
+    # trino_user = os.getenv("GE_TEST_TRINO_USER")
+    # if not trino_user:
+    #     raise ValueError(
+    #         "Environment Variable GE_TEST_TRINO_USER is required to run trino expectation tests."
+    #     )
+
+    # trino_password = os.getenv("GE_TEST_TRINO_PASSWORD")
+    # if not trino_password:
+    #     raise ValueError(
+    #         "Environment Variable GE_TEST_TRINO_PASSWORD is required to run trino expectation tests."  # noqa: E501 # FIXME CoP
+    #     )
+
+    # trino_account = os.getenv("GE_TEST_TRINO_ACCOUNT")
+    # if not trino_account:
+    #     raise ValueError(
+    #         "Environment Variable GE_TEST_TRINO_ACCOUNT is required to run trino expectation tests."  # noqa: E501 # FIXME CoP
+    #     )
+
+    # trino_cluster = os.getenv("GE_TEST_TRINO_CLUSTER")
+    # if not trino_cluster:
+    #     raise ValueError(
+    #         "Environment Variable GE_TEST_TRINO_CLUSTER is required to run trino expectation tests."  # noqa: E501 # FIXME CoP
+    #     )
+
+    # return create_engine(
+    #     f"trino://{trino_user}:{trino_password}@{trino_account}-{trino_cluster}.trino.galaxy.starburst.io:443/test_suite/test_ci"
+    # )
+
+
+def _get_trino_connection_string(hostname: str = "localhost", schema_name: str = "schema") -> str:
+    return f"trino://test@{hostname}:8088/memory/{schema_name}"
+
+
+def _create_redshift_engine() -> sqlalchemy.Engine:
+    return sa.create_engine(_get_redshift_connection_string())
+
+
+def _get_redshift_connection_string() -> str:
+    """
+    Copied get_redshift_connection_url func from tests/test_utils.py
+    """
+    host = os.environ.get("REDSHIFT_HOST")  # noqa: TID251 # FIXME CoP
+    port = os.environ.get("REDSHIFT_PORT")  # noqa: TID251 # FIXME CoP
+    user = os.environ.get("REDSHIFT_USERNAME")  # noqa: TID251 # FIXME CoP
+    pswd = os.environ.get("REDSHIFT_PASSWORD")  # noqa: TID251 # FIXME CoP
+    db = os.environ.get("REDSHIFT_DATABASE")  # noqa: TID251 # FIXME CoP
+    ssl = os.environ.get("REDSHIFT_SSLMODE")  # noqa: TID251 # FIXME CoP
+
+    if not host:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable REDSHIFT_HOST is required to run integration tests against Redshift"  # noqa: E501 # FIXME CoP
+        )
+    if not port:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable REDSHIFT_PORT is required to run integration tests against Redshift"  # noqa: E501 # FIXME CoP
+        )
+    if not user:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable REDSHIFT_USERNAME is required to run integration tests against Redshift"  # noqa: E501 # FIXME CoP
+        )
+    if not pswd:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable REDSHIFT_PASSWORD is required to run integration tests against Redshift"  # noqa: E501 # FIXME CoP
+        )
+    if not db:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable REDSHIFT_DATABASE is required to run integration tests against Redshift"  # noqa: E501 # FIXME CoP
+        )
+    if not ssl:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable REDSHIFT_SSLMODE is required to run integration tests against Redshift"  # noqa: E501 # FIXME CoP
+        )
+
+    url = f"redshift+psycopg2://{user}:{pswd}@{host}:{port}/{db}?sslmode={ssl}"
+
+    return url
+
+
+def _create_athena_engine(
+    db_name_env_var: str = "ATHENA_DB_NAME",
+) -> sqlalchemy.Engine:
+    return sa.create_engine(_get_athena_connection_string(db_name_env_var=db_name_env_var))
+
+
+def _get_athena_connection_string(db_name_env_var: str = "ATHENA_DB_NAME") -> str:
+    """
+    Copied get_awsathena_connection_url and get_awsathena_db_name funcs from
+    tests/test_utils.py
+    """
+    ATHENA_DB_NAME: Optional[str] = os.getenv(db_name_env_var)
+    ATHENA_STAGING_S3: Optional[str] = os.getenv("ATHENA_STAGING_S3")
+
+    if not ATHENA_DB_NAME:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            f"Environment Variable {db_name_env_var} is required to run integration tests against AWS Athena"  # noqa: E501 # FIXME CoP
+        )
+
+    if not ATHENA_STAGING_S3:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Environment Variable ATHENA_STAGING_S3 is required to run integration tests against AWS Athena"  # noqa: E501 # FIXME CoP
+        )
+
+    url = f"awsathena+rest://@athena.us-east-1.amazonaws.com/{ATHENA_DB_NAME}?s3_staging_dir={ATHENA_STAGING_S3}"
+
+    return url
+
+
+def _create_snowflake_engine() -> sqlalchemy.Engine:
+    connection_string = _get_snowflake_connection_string()
+    connect_args = _get_snowflake_connect_args()
+
+    if connect_args:
+        return sa.create_engine(connection_string, connect_args=connect_args)
+    else:
+        return sa.create_engine(connection_string)
+
+
+def _get_snowflake_connection_string() -> str:
+    """
+    Get Snowflake connection string from environment variables.
+
+    Supports both password and key-pair authentication:
+    - For password auth: Set SNOWFLAKE_USER and SNOWFLAKE_PW
+    - For key-pair auth: Set SNOWFLAKE_USER and SNOWFLAKE_PRIVATE_KEY
+
+    Copied and updated from get_snowflake_connection_url func in tests/test_utils.py
+    """
+    sf_user = os.environ.get("SNOWFLAKE_USER")  # noqa: TID251 # FIXME CoP
+    sf_pw = os.environ.get("SNOWFLAKE_PW")  # noqa: TID251 # FIXME CoP
+    sf_account = os.environ.get("SNOWFLAKE_ACCOUNT")  # noqa: TID251 # FIXME CoP
+    sf_database = os.environ.get("SNOWFLAKE_DATABASE")  # noqa: TID251 # FIXME CoP
+    sf_schema = os.environ.get("SNOWFLAKE_SCHEMA", "")  # noqa: TID251 # FIXME CoP
+    sf_warehouse = os.environ.get("SNOWFLAKE_WAREHOUSE")  # noqa: TID251 # FIXME CoP
+    sf_role = os.environ.get("SNOWFLAKE_ROLE", "PUBLIC")  # noqa: TID251 # FIXME CoP
+    sf_private_key = os.environ.get("SNOWFLAKE_PRIVATE_KEY")  # noqa: TID251 # FIXME CoP
+
+    if sf_private_key:
+        user_auth = sf_user
+    elif sf_pw:
+        user_auth = f"{sf_user}:{sf_pw}"
+    else:
+        raise ValueError(  # noqa: TRY003 # FIXME CoP
+            "Either SNOWFLAKE_PW or SNOWFLAKE_PRIVATE_KEY (base64-encoded) must be set"
+        )
+
+    url = f"snowflake://{user_auth}@{sf_account}/{sf_database}/{sf_schema}?warehouse={sf_warehouse}&role={sf_role}"
+
+    return url
+
+
+def _get_snowflake_connect_args(private_key: str | None = None) -> ConnectArgs:
+    """
+    Get connect_args for Snowflake connection (e.g., for key-pair auth).
+
+    Returns connect_args with private key if SNOWFLAKE_PRIVATE_KEY is set.
+
+    Returns:
+        Dictionary with 'private_key' key if using key-pair auth, empty dict otherwise.
+    """
+    sf_private_key = private_key or os.environ.get("SNOWFLAKE_PRIVATE_KEY")  # noqa: TID251 # FIXME CoP
+    if sf_private_key:
+        return {"private_key": sf_private_key}
+    return {}
+
+
+def generate_sqlite_db_path():
+    """Creates a temporary directory and absolute path to an ephemeral sqlite_db within that temp directory.
+
+    Used to support testing of multi-table expectations without creating temp directories at import.
+
+    Returns:
+        str: An absolute path to the ephemeral db within the created temporary directory.
+    """  # noqa: E501 # FIXME CoP
+    tmp_dir = str(tempfile.mkdtemp())
+    abspath = os.path.abspath(  # noqa: PTH100 # FIXME CoP
+        os.path.join(  # noqa: PTH118 # FIXME CoP
+            tmp_dir,
+            "sqlite_db"
+            + "".join([random.choice(string.ascii_letters + string.digits) for _ in range(8)])
+            + ".db",
+        )
+    )
+    return abspath
