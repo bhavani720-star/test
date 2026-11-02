@@ -1,0 +1,2054 @@
+{
+  "input_contract": {
+    "current_extract": {
+      "success": true,
+      "results": [
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column_set": [
+                "organization_perm_id",
+                "fiscal_year",
+                "co2_emiss_scope1",
+                "co2_emiss_scope2",
+                "co2_emiss_scope2_marketbased",
+                "co2_emiss_scope2_locbased",
+                "as_of_date"
+              ],
+              "exact_match": false
+            },
+            "meta": {
+              "rule_id": "C01",
+              "severity": "fatal",
+              "description": "every column the script reads is there"
+            },
+            "id": "498ebb70-7eb8-4bb5-a34d-27d73a00ff84",
+            "severity": "critical"
+          },
+          "result": {
+            "observed_value": [
+              "as_of_date",
+              "co2_emiss_down_scope3_cat10",
+              "co2_emiss_down_scope3_cat11",
+              "co2_emiss_down_scope3_cat12",
+              "co2_emiss_down_scope3_cat13",
+              "co2_emiss_down_scope3_cat14",
+              "co2_emiss_down_scope3_cat15",
+              "co2_emiss_down_scope3_cat9",
+              "co2_emiss_scope1",
+              "co2_emiss_scope1_verification",
+              "co2_emiss_scope2",
+              "co2_emiss_scope2_locbased",
+              "co2_emiss_scope2_marketbased",
+              "co2_emiss_scope2_verification",
+              "co2_emiss_up_scope3_cat1",
+              "co2_emiss_up_scope3_cat2",
+              "co2_emiss_up_scope3_cat3",
+              "co2_emiss_up_scope3_cat4",
+              "co2_emiss_up_scope3_cat5",
+              "co2_emiss_up_scope3_cat6",
+              "co2_emiss_up_scope3_cat7",
+              "co2_emiss_up_scope3_cat8",
+              "fiscal_year",
+              "organization_perm_id"
+            ],
+            "details": {
+              "mismatched": {
+                "unexpected": [
+                  "co2_emiss_down_scope3_cat10",
+                  "co2_emiss_down_scope3_cat11",
+                  "co2_emiss_down_scope3_cat12",
+                  "co2_emiss_down_scope3_cat13",
+                  "co2_emiss_down_scope3_cat14",
+                  "co2_emiss_down_scope3_cat15",
+                  "co2_emiss_down_scope3_cat9",
+                  "co2_emiss_scope1_verification",
+                  "co2_emiss_scope2_verification",
+                  "co2_emiss_up_scope3_cat1",
+                  "co2_emiss_up_scope3_cat2",
+                  "co2_emiss_up_scope3_cat3",
+                  "co2_emiss_up_scope3_cat4",
+                  "co2_emiss_up_scope3_cat5",
+                  "co2_emiss_up_scope3_cat6",
+                  "co2_emiss_up_scope3_cat7",
+                  "co2_emiss_up_scope3_cat8"
+                ]
+              }
+            }
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_compound_columns_to_be_unique",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column_list": [
+                "organization_perm_id",
+                "fiscal_year"
+              ]
+            },
+            "meta": {
+              "rule_id": "C05",
+              "severity": "warning",
+              "description": "one row per company and year (else the merge multiplies rows)"
+            },
+            "id": "53ea3242-b9fc-403b-9a1a-8a8bed74263e",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_match_strftime_format",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "as_of_date",
+              "strftime_format": "%Y-%m-%d"
+            },
+            "meta": {
+              "rule_id": "C02",
+              "severity": "fatal",
+              "description": "as_of_date is a real date (YYYY-MM-DD)"
+            },
+            "id": "54a08d36-4618-4243-9769-3b26ef98d64d",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "organization_perm_id"
+            },
+            "meta": {
+              "rule_id": "C03",
+              "severity": "fatal",
+              "description": "join key organization_perm_id is filled"
+            },
+            "id": "44ca229d-a2c6-4300-b4bd-0da975bb15d1",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "fiscal_year"
+            },
+            "meta": {
+              "rule_id": "C04",
+              "severity": "fatal",
+              "description": "join key fiscal_year is filled"
+            },
+            "id": "35821a0c-bf12-4e61-acf0-2287136eceb1",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "co2_emiss_scope1",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C06",
+              "severity": "warning",
+              "description": "co2_emiss_scope1 is not negative"
+            },
+            "id": "a00a24cf-24be-4e90-bac5-9e2c9b3a059a",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 1,
+            "missing_percent": 0.5050505050505051,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "co2_emiss_scope2",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C07",
+              "severity": "warning",
+              "description": "co2_emiss_scope2 is not negative"
+            },
+            "id": "dd30f92b-3f30-4152-8783-148836f9d4b7",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 1,
+            "missing_percent": 0.5050505050505051,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "co2_emiss_scope2_marketbased",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C08",
+              "severity": "warning",
+              "description": "co2_emiss_scope2_marketbased is not negative"
+            },
+            "id": "8d4a7911-f3d7-4bed-aa7e-fb440e0a0e42",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 1,
+            "missing_percent": 0.5050505050505051,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_current_source-contract_current_asset",
+              "column": "co2_emiss_scope2_locbased",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C09",
+              "severity": "warning",
+              "description": "co2_emiss_scope2_locbased is not negative"
+            },
+            "id": "90c15c69-733e-41a3-8d57-160168fd1648",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 198,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 1,
+            "missing_percent": 0.5050505050505051,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "contract_current",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 9,
+        "successful_expectations": 9,
+        "unsuccessful_expectations": 0,
+        "success_percent": 100.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182643.430940Z",
+          "pandas_data_fingerprint": "bef49a28c0f48384c823e7b2ef62727f"
+        },
+        "active_batch_definition": {
+          "datasource_name": "contract_current_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "contract_current_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    },
+    "previous_extract": {
+      "success": true,
+      "results": [
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column_set": [
+                "organization_perm_id",
+                "fiscal_year",
+                "co2_emiss_scope1",
+                "co2_emiss_scope2",
+                "co2_emiss_scope2_marketbased",
+                "co2_emiss_scope2_locbased",
+                "as_of_date"
+              ],
+              "exact_match": false
+            },
+            "meta": {
+              "rule_id": "C01",
+              "severity": "fatal",
+              "description": "every column the script reads is there"
+            },
+            "id": "282f88c5-194a-4f01-93bb-ca687dd529cf",
+            "severity": "critical"
+          },
+          "result": {
+            "observed_value": [
+              "as_of_date",
+              "co2_emiss_down_scope3_cat10",
+              "co2_emiss_down_scope3_cat11",
+              "co2_emiss_down_scope3_cat12",
+              "co2_emiss_down_scope3_cat13",
+              "co2_emiss_down_scope3_cat14",
+              "co2_emiss_down_scope3_cat15",
+              "co2_emiss_down_scope3_cat9",
+              "co2_emiss_scope1",
+              "co2_emiss_scope1_verification",
+              "co2_emiss_scope2",
+              "co2_emiss_scope2_locbased",
+              "co2_emiss_scope2_marketbased",
+              "co2_emiss_scope2_verification",
+              "co2_emiss_up_scope3_cat1",
+              "co2_emiss_up_scope3_cat2",
+              "co2_emiss_up_scope3_cat3",
+              "co2_emiss_up_scope3_cat4",
+              "co2_emiss_up_scope3_cat5",
+              "co2_emiss_up_scope3_cat6",
+              "co2_emiss_up_scope3_cat7",
+              "co2_emiss_up_scope3_cat8",
+              "fiscal_year",
+              "organization_perm_id"
+            ],
+            "details": {
+              "mismatched": {
+                "unexpected": [
+                  "co2_emiss_down_scope3_cat10",
+                  "co2_emiss_down_scope3_cat11",
+                  "co2_emiss_down_scope3_cat12",
+                  "co2_emiss_down_scope3_cat13",
+                  "co2_emiss_down_scope3_cat14",
+                  "co2_emiss_down_scope3_cat15",
+                  "co2_emiss_down_scope3_cat9",
+                  "co2_emiss_scope1_verification",
+                  "co2_emiss_scope2_verification",
+                  "co2_emiss_up_scope3_cat1",
+                  "co2_emiss_up_scope3_cat2",
+                  "co2_emiss_up_scope3_cat3",
+                  "co2_emiss_up_scope3_cat4",
+                  "co2_emiss_up_scope3_cat5",
+                  "co2_emiss_up_scope3_cat6",
+                  "co2_emiss_up_scope3_cat7",
+                  "co2_emiss_up_scope3_cat8"
+                ]
+              }
+            }
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_compound_columns_to_be_unique",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column_list": [
+                "organization_perm_id",
+                "fiscal_year"
+              ]
+            },
+            "meta": {
+              "rule_id": "C05",
+              "severity": "warning",
+              "description": "one row per company and year (else the merge multiplies rows)"
+            },
+            "id": "4a7672b4-23c3-469e-992f-d9b3da5d92d6",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column_set": [
+                "co2_emiss_scope1_verification",
+                "co2_emiss_scope2_verification"
+              ],
+              "exact_match": false
+            },
+            "meta": {
+              "rule_id": "C10",
+              "severity": "fatal",
+              "description": "has every 'verification' column of the current extract (the script drops them)"
+            },
+            "id": "19530b9a-7c82-4976-a55c-496a6773e60c",
+            "severity": "critical"
+          },
+          "result": {
+            "observed_value": [
+              "as_of_date",
+              "co2_emiss_down_scope3_cat10",
+              "co2_emiss_down_scope3_cat11",
+              "co2_emiss_down_scope3_cat12",
+              "co2_emiss_down_scope3_cat13",
+              "co2_emiss_down_scope3_cat14",
+              "co2_emiss_down_scope3_cat15",
+              "co2_emiss_down_scope3_cat9",
+              "co2_emiss_scope1",
+              "co2_emiss_scope1_verification",
+              "co2_emiss_scope2",
+              "co2_emiss_scope2_locbased",
+              "co2_emiss_scope2_marketbased",
+              "co2_emiss_scope2_verification",
+              "co2_emiss_up_scope3_cat1",
+              "co2_emiss_up_scope3_cat2",
+              "co2_emiss_up_scope3_cat3",
+              "co2_emiss_up_scope3_cat4",
+              "co2_emiss_up_scope3_cat5",
+              "co2_emiss_up_scope3_cat6",
+              "co2_emiss_up_scope3_cat7",
+              "co2_emiss_up_scope3_cat8",
+              "fiscal_year",
+              "organization_perm_id"
+            ],
+            "details": {
+              "mismatched": {
+                "unexpected": [
+                  "as_of_date",
+                  "co2_emiss_down_scope3_cat10",
+                  "co2_emiss_down_scope3_cat11",
+                  "co2_emiss_down_scope3_cat12",
+                  "co2_emiss_down_scope3_cat13",
+                  "co2_emiss_down_scope3_cat14",
+                  "co2_emiss_down_scope3_cat15",
+                  "co2_emiss_down_scope3_cat9",
+                  "co2_emiss_scope1",
+                  "co2_emiss_scope2",
+                  "co2_emiss_scope2_locbased",
+                  "co2_emiss_scope2_marketbased",
+                  "co2_emiss_up_scope3_cat1",
+                  "co2_emiss_up_scope3_cat2",
+                  "co2_emiss_up_scope3_cat3",
+                  "co2_emiss_up_scope3_cat4",
+                  "co2_emiss_up_scope3_cat5",
+                  "co2_emiss_up_scope3_cat6",
+                  "co2_emiss_up_scope3_cat7",
+                  "co2_emiss_up_scope3_cat8",
+                  "fiscal_year",
+                  "organization_perm_id"
+                ]
+              }
+            }
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_match_strftime_format",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "as_of_date",
+              "strftime_format": "%Y-%m-%d"
+            },
+            "meta": {
+              "rule_id": "C02",
+              "severity": "fatal",
+              "description": "as_of_date is a real date (YYYY-MM-DD)"
+            },
+            "id": "e3241e65-f2cd-472d-8a31-ba2f5dfb21b3",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "organization_perm_id"
+            },
+            "meta": {
+              "rule_id": "C03",
+              "severity": "fatal",
+              "description": "join key organization_perm_id is filled"
+            },
+            "id": "cf73ef9f-9baf-4f84-b4ef-d09691732853",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_not_be_null",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "fiscal_year"
+            },
+            "meta": {
+              "rule_id": "C04",
+              "severity": "fatal",
+              "description": "join key fiscal_year is filled"
+            },
+            "id": "1debcb0b-1a2e-4e85-849c-e81788d4288f",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "co2_emiss_scope1",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C06",
+              "severity": "warning",
+              "description": "co2_emiss_scope1 is not negative"
+            },
+            "id": "95466383-aaac-4b38-ae13-544b98dcf405",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "co2_emiss_scope2",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C07",
+              "severity": "warning",
+              "description": "co2_emiss_scope2 is not negative"
+            },
+            "id": "cdea228b-0662-49c9-bd94-6339be3f2582",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "co2_emiss_scope2_marketbased",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C08",
+              "severity": "warning",
+              "description": "co2_emiss_scope2_marketbased is not negative"
+            },
+            "id": "83f422d9-5788-4b96-a7a1-8e1c9ae9c06a",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "contract_previous_source-contract_previous_asset",
+              "column": "co2_emiss_scope2_locbased",
+              "min_value": 0.0
+            },
+            "meta": {
+              "rule_id": "C09",
+              "severity": "warning",
+              "description": "co2_emiss_scope2_locbased is not negative"
+            },
+            "id": "cdfaa249-257f-4614-bec9-d6006a32634b",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 0,
+            "unexpected_percent": 0.0,
+            "partial_unexpected_list": [],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.0,
+            "unexpected_percent_nonmissing": 0.0,
+            "partial_unexpected_counts": [],
+            "partial_unexpected_index_list": [],
+            "unexpected_list": [],
+            "unexpected_index_list": [],
+            "unexpected_index_query": "df.filter(items=[], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "contract_previous",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 10,
+        "successful_expectations": 10,
+        "unsuccessful_expectations": 0,
+        "success_percent": 100.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182643.665888Z",
+          "pandas_data_fingerprint": "77e6b6ee65ea4815449ca35e0a34f4bf"
+        },
+        "active_batch_definition": {
+          "datasource_name": "contract_previous_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "contract_previous_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    },
+    "marketcap": {
+      "success": true,
+      "results": [
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "batch_id": "contract_marketcap_source-contract_marketcap_asset",
+              "column_set": [
+                "organization_perm_id",
+                "company_market_cap"
+              ],
+              "exact_match": false
+            },
+            "meta": {
+              "rule_id": "R1",
+              "severity": "fatal",
+              "description": "marketcap has the columns the script reads"
+            },
+            "id": "b212f7aa-c68a-44b0-a981-a7d0ef5dc202",
+            "severity": "critical"
+          },
+          "result": {
+            "observed_value": [
+              "company_market_cap",
+              "organization_perm_id"
+            ]
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "contract_marketcap",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 1,
+        "successful_expectations": 1,
+        "unsuccessful_expectations": 0,
+        "success_percent": 100.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182643.839611Z",
+          "pandas_data_fingerprint": "7ed01a8974045662bfa398e12f1d8975"
+        },
+        "active_batch_definition": {
+          "datasource_name": "contract_marketcap_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "contract_marketcap_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    },
+    "icb_info": {
+      "success": true,
+      "results": [
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "batch_id": "contract_icb_info_source-contract_icb_info_asset",
+              "column_set": [
+                "organization_perm_id",
+                "name",
+                "ric",
+                "industry_name"
+              ],
+              "exact_match": false
+            },
+            "meta": {
+              "rule_id": "R2",
+              "severity": "fatal",
+              "description": "icb_info has the columns the script reads"
+            },
+            "id": "d3cac705-0ceb-4110-a6bb-6d50ed5a3500",
+            "severity": "critical"
+          },
+          "result": {
+            "observed_value": [
+              "industry_name",
+              "name",
+              "organization_perm_id",
+              "ric"
+            ]
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "contract_icb_info",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 1,
+        "successful_expectations": 1,
+        "unsuccessful_expectations": 0,
+        "success_percent": 100.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182643.881612Z",
+          "pandas_data_fingerprint": "b1d7996d10139d25271a3df3c2da1ce3"
+        },
+        "active_batch_definition": {
+          "datasource_name": "contract_icb_info_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "contract_icb_info_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    },
+    "univ_inactive": {
+      "success": true,
+      "results": [
+        {
+          "success": true,
+          "expectation_config": {
+            "type": "expect_table_columns_to_match_set",
+            "kwargs": {
+              "batch_id": "contract_univ_inactive_source-contract_univ_inactive_asset",
+              "column_set": [
+                "organizationid",
+                "name",
+                "ric",
+                "status"
+              ],
+              "exact_match": false
+            },
+            "meta": {
+              "rule_id": "R3",
+              "severity": "fatal",
+              "description": "univ_inactive has the columns the script reads"
+            },
+            "id": "7677c63d-aa93-40c9-a312-c93e2a69993a",
+            "severity": "critical"
+          },
+          "result": {
+            "observed_value": [
+              "name",
+              "organizationid",
+              "ric",
+              "status"
+            ]
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "contract_univ_inactive",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 1,
+        "successful_expectations": 1,
+        "unsuccessful_expectations": 0,
+        "success_percent": 100.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182643.920501Z",
+          "pandas_data_fingerprint": "356ec24701cf0992514499b1e3563a15"
+        },
+        "active_batch_definition": {
+          "datasource_name": "contract_univ_inactive_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "contract_univ_inactive_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    }
+  },
+  "checks": {
+    "company_year": {
+      "success": false,
+      "results": [
+        {
+          "success": false,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_in_set",
+            "kwargs": {
+              "batch_id": "lseg_company_year_source-lseg_company_year_asset",
+              "column": "in_current",
+              "row_condition": {
+                "pass_through_filter": "in_previous == True",
+                "type": "pass_through"
+              },
+              "condition_parser": "pandas",
+              "value_set": [
+                true
+              ]
+            },
+            "meta": {
+              "rule_id": "L01",
+              "severity": "report",
+              "description": "company-year in the previous extract is in the current one"
+            },
+            "id": "6c919eae-334b-4571-abdb-1d76e7558cb9",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 160,
+            "unexpected_count": 5,
+            "unexpected_percent": 3.125,
+            "partial_unexpected_list": [
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "unexpected_index_column_names": [
+              "record_key"
+            ],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 3.125,
+            "unexpected_percent_nonmissing": 3.125,
+            "partial_unexpected_counts": [
+              {
+                "value": false,
+                "count": 5
+              }
+            ],
+            "partial_unexpected_index_list": [
+              {
+                "in_current": false,
+                "record_key": "5000000205|2023"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2021"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2022"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2023"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2024"
+              }
+            ],
+            "unexpected_list": [
+              false,
+              false,
+              false,
+              false,
+              false
+            ],
+            "unexpected_index_list": [
+              {
+                "in_current": false,
+                "record_key": "5000000205|2023"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2021"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2022"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2023"
+              },
+              {
+                "in_current": false,
+                "record_key": "5000000239|2024"
+              }
+            ],
+            "unexpected_index_query": "df.filter(items=[22, 190, 191, 192, 193], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "lseg_company_year",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 1,
+        "successful_expectations": 0,
+        "unsuccessful_expectations": 1,
+        "success_percent": 0.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182646.929457Z",
+          "pandas_data_fingerprint": "5356f649715b4a51132df0b5fa4fe63a"
+        },
+        "active_batch_definition": {
+          "datasource_name": "lseg_company_year_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "lseg_company_year_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    },
+    "datapoint": {
+      "success": false,
+      "results": [
+        {
+          "success": false,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "lseg_datapoint_source-lseg_datapoint_asset",
+              "column": "extract_pct_change",
+              "row_condition": {
+                "pass_through_filter": "abs(extract_nominal_change) > 100000",
+                "type": "pass_through"
+              },
+              "condition_parser": "pandas",
+              "min_value": -66.0,
+              "max_value": 200.0
+            },
+            "meta": {
+              "rule_id": "L02",
+              "severity": "report",
+              "description": "variance vs previous extract within -66%..200% (when the change is over 100,000)"
+            },
+            "id": "5386ff34-30a7-4baf-9362-aa4375f520d7",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 62,
+            "unexpected_count": 62,
+            "unexpected_percent": 100.0,
+            "partial_unexpected_list": [
+              700.0,
+              -90.0,
+              900.0001162823148,
+              899.9982347126112,
+              899.9978810596398,
+              900.0003720888698,
+              900.0021758089931,
+              900.0007393701676,
+              899.9982361698076,
+              900.0002330967014,
+              900.0006963555535,
+              900.0013348675411,
+              900.0,
+              899.9989655957135,
+              899.9998208466429,
+              899.9981779886452,
+              899.9981617260867,
+              899.9995278118803,
+              900.0004842005366,
+              899.9990002549349
+            ],
+            "unexpected_index_column_names": [
+              "record_key"
+            ],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 100.0,
+            "unexpected_percent_nonmissing": 100.0,
+            "partial_unexpected_counts": [
+              {
+                "value": -90.0,
+                "count": 1
+              },
+              {
+                "value": 700.0,
+                "count": 1
+              },
+              {
+                "value": 899.9978810596398,
+                "count": 1
+              },
+              {
+                "value": 899.9981617260867,
+                "count": 1
+              },
+              {
+                "value": 899.9981779886452,
+                "count": 1
+              },
+              {
+                "value": 899.9982347126112,
+                "count": 1
+              },
+              {
+                "value": 899.9982361698076,
+                "count": 1
+              },
+              {
+                "value": 899.9989655957135,
+                "count": 1
+              },
+              {
+                "value": 899.9990002549349,
+                "count": 1
+              },
+              {
+                "value": 899.9995278118803,
+                "count": 1
+              },
+              {
+                "value": 899.9998208466429,
+                "count": 1
+              },
+              {
+                "value": 900.0,
+                "count": 1
+              },
+              {
+                "value": 900.0001162823148,
+                "count": 1
+              },
+              {
+                "value": 900.0002330967014,
+                "count": 1
+              },
+              {
+                "value": 900.0003720888698,
+                "count": 1
+              },
+              {
+                "value": 900.0004842005366,
+                "count": 1
+              },
+              {
+                "value": 900.0006963555535,
+                "count": 1
+              },
+              {
+                "value": 900.0007393701676,
+                "count": 1
+              },
+              {
+                "value": 900.0013348675411,
+                "count": 1
+              },
+              {
+                "value": 900.0021758089931,
+                "count": 1
+              }
+            ],
+            "partial_unexpected_index_list": [
+              {
+                "extract_pct_change": 700.0,
+                "record_key": "5000000201|2023|co2_emiss_scope1"
+              },
+              {
+                "extract_pct_change": -90.0,
+                "record_key": "5000000202|2022|co2_emiss_scope2"
+              },
+              {
+                "extract_pct_change": 900.0001162823148,
+                "record_key": "5000000206|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9982347126112,
+                "record_key": "5000000207|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9978810596398,
+                "record_key": "5000000208|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0003720888698,
+                "record_key": "5000000209|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0021758089931,
+                "record_key": "5000000209|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0007393701676,
+                "record_key": "5000000209|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9982361698076,
+                "record_key": "5000000210|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0002330967014,
+                "record_key": "5000000210|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0006963555535,
+                "record_key": "5000000211|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0013348675411,
+                "record_key": "5000000211|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0,
+                "record_key": "5000000212|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9989655957135,
+                "record_key": "5000000213|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9998208466429,
+                "record_key": "5000000213|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9981779886452,
+                "record_key": "5000000213|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9981617260867,
+                "record_key": "5000000214|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9995278118803,
+                "record_key": "5000000215|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0004842005366,
+                "record_key": "5000000215|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9990002549349,
+                "record_key": "5000000216|2021|total_downstream_scope3"
+              }
+            ],
+            "unexpected_list": [
+              700.0,
+              -90.0,
+              900.0001162823148,
+              899.9982347126112,
+              899.9978810596398,
+              900.0003720888698,
+              900.0021758089931,
+              900.0007393701676,
+              899.9982361698076,
+              900.0002330967014,
+              900.0006963555535,
+              900.0013348675411,
+              900.0,
+              899.9989655957135,
+              899.9998208466429,
+              899.9981779886452,
+              899.9981617260867,
+              899.9995278118803,
+              900.0004842005366,
+              899.9990002549349,
+              900.0013954503245,
+              900.0014180648571,
+              899.9998974351611,
+              899.9988047963523,
+              899.999204568956,
+              900.0009632132794,
+              899.9993759575151,
+              899.9996457334498,
+              899.9995161350805,
+              899.9979040106755,
+              899.9996812528886,
+              899.9987118796895,
+              900.0020255754217,
+              900.0005438778929,
+              900.0005799006437,
+              900.0011824302687,
+              900.0013847416575,
+              899.9977581072446,
+              900.0006947706007,
+              900.0002751220854,
+              900.0006907098149,
+              900.0013413672289,
+              899.9997575025674,
+              900.0002371725241,
+              899.9990651464391,
+              899.9990528228839,
+              899.9997216570314,
+              900.0002837120891,
+              900.0008510807307,
+              900.0007381969687,
+              900.0007172510349,
+              900.0008661608288,
+              900.0014472554969,
+              900.0017923143001,
+              899.9996203790643,
+              899.99974364463,
+              900.0013878707666,
+              900.0008543853893,
+              900.0017031103905,
+              900.0006778861341,
+              899.9998620168175,
+              899.9979991768041
+            ],
+            "unexpected_index_list": [
+              {
+                "extract_pct_change": 700.0,
+                "record_key": "5000000201|2023|co2_emiss_scope1"
+              },
+              {
+                "extract_pct_change": -90.0,
+                "record_key": "5000000202|2022|co2_emiss_scope2"
+              },
+              {
+                "extract_pct_change": 900.0001162823148,
+                "record_key": "5000000206|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9982347126112,
+                "record_key": "5000000207|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9978810596398,
+                "record_key": "5000000208|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0003720888698,
+                "record_key": "5000000209|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0021758089931,
+                "record_key": "5000000209|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0007393701676,
+                "record_key": "5000000209|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9982361698076,
+                "record_key": "5000000210|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0002330967014,
+                "record_key": "5000000210|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0006963555535,
+                "record_key": "5000000211|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0013348675411,
+                "record_key": "5000000211|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0,
+                "record_key": "5000000212|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9989655957135,
+                "record_key": "5000000213|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9998208466429,
+                "record_key": "5000000213|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9981779886452,
+                "record_key": "5000000213|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9981617260867,
+                "record_key": "5000000214|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9995278118803,
+                "record_key": "5000000215|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0004842005366,
+                "record_key": "5000000215|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9990002549349,
+                "record_key": "5000000216|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0013954503245,
+                "record_key": "5000000216|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0014180648571,
+                "record_key": "5000000216|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9998974351611,
+                "record_key": "5000000217|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9988047963523,
+                "record_key": "5000000217|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.999204568956,
+                "record_key": "5000000218|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0009632132794,
+                "record_key": "5000000218|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9993759575151,
+                "record_key": "5000000218|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9996457334498,
+                "record_key": "5000000219|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9995161350805,
+                "record_key": "5000000219|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9979040106755,
+                "record_key": "5000000220|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9996812528886,
+                "record_key": "5000000221|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9987118796895,
+                "record_key": "5000000222|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0020255754217,
+                "record_key": "5000000222|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0005438778929,
+                "record_key": "5000000224|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0005799006437,
+                "record_key": "5000000225|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0011824302687,
+                "record_key": "5000000225|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0013847416575,
+                "record_key": "5000000226|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9977581072446,
+                "record_key": "5000000226|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0006947706007,
+                "record_key": "5000000227|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0002751220854,
+                "record_key": "5000000227|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0006907098149,
+                "record_key": "5000000227|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0013413672289,
+                "record_key": "5000000227|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9997575025674,
+                "record_key": "5000000228|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0002371725241,
+                "record_key": "5000000228|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9990651464391,
+                "record_key": "5000000229|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9990528228839,
+                "record_key": "5000000229|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9997216570314,
+                "record_key": "5000000232|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0002837120891,
+                "record_key": "5000000232|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0008510807307,
+                "record_key": "5000000232|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0007381969687,
+                "record_key": "5000000233|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0007172510349,
+                "record_key": "5000000234|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0008661608288,
+                "record_key": "5000000235|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0014472554969,
+                "record_key": "5000000235|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0017923143001,
+                "record_key": "5000000236|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9996203790643,
+                "record_key": "5000000236|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.99974364463,
+                "record_key": "5000000237|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0013878707666,
+                "record_key": "5000000237|2024|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0008543853893,
+                "record_key": "5000000238|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0017031103905,
+                "record_key": "5000000238|2023|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 900.0006778861341,
+                "record_key": "5000000240|2021|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9998620168175,
+                "record_key": "5000000240|2022|total_downstream_scope3"
+              },
+              {
+                "extract_pct_change": 899.9979991768041,
+                "record_key": "5000000240|2024|total_downstream_scope3"
+              }
+            ],
+            "unexpected_index_query": "df.filter(items=[2, 203, 1011, 1015, 1022, 1024, 1025, 1027, 1030, 1031, 1034, 1036, 1041, 1044, 1045, 1046, 1049, 1054, 1055, 1059, 1060, 1062, 1065, 1066, 1070, 1071, 1072, 1074, 1076, 1081, 1086, 1090, 1091, 1101, 1104, 1107, 1110, 1111, 1114, 1115, 1116, 1117, 1119, 1122, 1125, 1127, 1139, 1141, 1142, 1144, 1152, 1154, 1155, 1159, 1160, 1165, 1167, 1169, 1171, 1174, 1175, 1177], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": false,
+          "expectation_config": {
+            "type": "expect_column_values_to_be_between",
+            "kwargs": {
+              "batch_id": "lseg_datapoint_source-lseg_datapoint_asset",
+              "column": "yoy_pct_change",
+              "row_condition": {
+                "pass_through_filter": "abs(yoy_nominal_change) > 100000",
+                "type": "pass_through"
+              },
+              "condition_parser": "pandas",
+              "min_value": -83.0,
+              "max_value": 500.0
+            },
+            "meta": {
+              "rule_id": "L03",
+              "severity": "report",
+              "description": "YoY change within -83%..500% (when the change is over 100,000)"
+            },
+            "id": "7de1de4a-eab8-4454-965f-bd229ed6bc03",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 398,
+            "unexpected_count": 2,
+            "unexpected_percent": 0.5025125628140703,
+            "partial_unexpected_list": [
+              606.7001753342086,
+              -92.35289949876257
+            ],
+            "unexpected_index_column_names": [
+              "record_key"
+            ],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 0.5025125628140703,
+            "unexpected_percent_nonmissing": 0.5025125628140703,
+            "partial_unexpected_counts": [
+              {
+                "value": -92.35289949876257,
+                "count": 1
+              },
+              {
+                "value": 606.7001753342086,
+                "count": 1
+              }
+            ],
+            "partial_unexpected_index_list": [
+              {
+                "yoy_pct_change": 606.7001753342086,
+                "record_key": "5000000203|2024|co2_emiss_scope1"
+              },
+              {
+                "yoy_pct_change": -92.35289949876257,
+                "record_key": "5000000204|2025|total_upstream_scope3"
+              }
+            ],
+            "unexpected_list": [
+              606.7001753342086,
+              -92.35289949876257
+            ],
+            "unexpected_index_list": [
+              {
+                "yoy_pct_change": 606.7001753342086,
+                "record_key": "5000000203|2024|co2_emiss_scope1"
+              },
+              {
+                "yoy_pct_change": -92.35289949876257,
+                "record_key": "5000000204|2025|total_upstream_scope3"
+              }
+            ],
+            "unexpected_index_query": "df.filter(items=[13, 807], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        },
+        {
+          "success": false,
+          "expectation_config": {
+            "type": "expect_column_pair_values_a_to_be_greater_than_b",
+            "kwargs": {
+              "batch_id": "lseg_datapoint_source-lseg_datapoint_asset",
+              "column_A": "iforest_threshold",
+              "column_B": "iforest_score",
+              "row_condition": {
+                "pass_through_filter": "(iso_nominal_change != 0) & ((iso_pct_change > 500) | (iso_pct_change < -83))",
+                "type": "pass_through"
+              },
+              "condition_parser": "pandas",
+              "ignore_row_if": "either_value_is_missing"
+            },
+            "meta": {
+              "rule_id": "L04",
+              "severity": "report",
+              "description": "Isolation Forest score below its group's 99.9th percentile (YoY beyond -83%..500%)"
+            },
+            "id": "b6075895-8e41-4522-9b34-130ccaaf9bc0",
+            "severity": "critical"
+          },
+          "result": {
+            "element_count": 3,
+            "unexpected_count": 3,
+            "unexpected_percent": 100.0,
+            "partial_unexpected_list": [
+              [
+                0.3895684615785279,
+                0.410261407795828
+              ],
+              [
+                0.3025688479327576,
+                0.31281960003612175
+              ],
+              [
+                0.3886283904580753,
+                0.40512654851734187
+              ]
+            ],
+            "unexpected_index_column_names": [
+              "record_key"
+            ],
+            "missing_count": 0,
+            "missing_percent": 0.0,
+            "unexpected_percent_total": 100.0,
+            "unexpected_percent_nonmissing": 100.0,
+            "partial_unexpected_counts": [
+              {
+                "value": [
+                  0.3025688479327576,
+                  0.31281960003612175
+                ],
+                "count": 1
+              },
+              {
+                "value": [
+                  0.3886283904580753,
+                  0.40512654851734187
+                ],
+                "count": 1
+              },
+              {
+                "value": [
+                  0.3895684615785279,
+                  0.410261407795828
+                ],
+                "count": 1
+              }
+            ],
+            "partial_unexpected_index_list": [
+              {
+                "iforest_threshold": 0.3895684615785279,
+                "record_key": "5000000203|2024|co2_emiss_scope1",
+                "iforest_score": 0.410261407795828
+              },
+              {
+                "iforest_threshold": 0.3025688479327576,
+                "record_key": "5000000231|2025|co2_emiss_scope2_locbased",
+                "iforest_score": 0.31281960003612175
+              },
+              {
+                "iforest_threshold": 0.3886283904580753,
+                "record_key": "5000000204|2025|total_upstream_scope3",
+                "iforest_score": 0.40512654851734187
+              }
+            ],
+            "unexpected_list": [
+              [
+                0.3895684615785279,
+                0.410261407795828
+              ],
+              [
+                0.3025688479327576,
+                0.31281960003612175
+              ],
+              [
+                0.3886283904580753,
+                0.40512654851734187
+              ]
+            ],
+            "unexpected_index_list": [
+              {
+                "iforest_threshold": 0.3895684615785279,
+                "record_key": "5000000203|2024|co2_emiss_scope1",
+                "iforest_score": 0.410261407795828
+              },
+              {
+                "iforest_threshold": 0.3025688479327576,
+                "record_key": "5000000231|2025|co2_emiss_scope2_locbased",
+                "iforest_score": 0.31281960003612175
+              },
+              {
+                "iforest_threshold": 0.3886283904580753,
+                "record_key": "5000000204|2025|total_upstream_scope3",
+                "iforest_score": 0.40512654851734187
+              }
+            ],
+            "unexpected_index_query": "df.filter(items=[13, 744, 807], axis=0)"
+          },
+          "meta": {},
+          "exception_info": {
+            "raised_exception": false,
+            "exception_traceback": null,
+            "exception_message": null
+          }
+        }
+      ],
+      "suite_name": "lseg_datapoint",
+      "suite_parameters": {},
+      "statistics": {
+        "evaluated_expectations": 3,
+        "successful_expectations": 0,
+        "unsuccessful_expectations": 3,
+        "success_percent": 0.0
+      },
+      "meta": {
+        "great_expectations_version": "1.24.1",
+        "batch_spec": {
+          "batch_data": "PandasDataFrame"
+        },
+        "batch_markers": {
+          "ge_load_time": "20261102T182647.016762Z",
+          "pandas_data_fingerprint": "ebfb8a293fc79a92e9a3c17e09e37d86"
+        },
+        "active_batch_definition": {
+          "datasource_name": "lseg_datapoint_source",
+          "data_connector_name": "fluent",
+          "data_asset_name": "lseg_datapoint_asset",
+          "batch_identifiers": {
+            "dataframe": "<DATAFRAME>"
+          }
+        }
+      },
+      "id": null
+    }
+  }
+}
