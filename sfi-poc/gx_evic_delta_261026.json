@@ -1,0 +1,456 @@
+{
+  "input_contract": {
+    "success": true,
+    "results": [
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_table_columns_to_match_set",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column_set": [
+              "organization_perm_id",
+              "year",
+              "measure",
+              "org_id",
+              "ric",
+              "name",
+              "tr_f_evexclceadjust",
+              "market_cap_os",
+              "debt_incl_equity_and_min_interest_total",
+              "debt_total",
+              "minority_interest_total",
+              "preferred_shareholders_equity",
+              "market_capitalization",
+              "possible_reason_of_evic_change_yoy",
+              "reason_for_inclusion",
+              "comment",
+              "as_of_date"
+            ],
+            "exact_match": false
+          },
+          "meta": {
+            "rule_id": "C01",
+            "severity": "fatal",
+            "description": "every column the script reads is there"
+          },
+          "id": "5104e80a-9ee5-4e69-b519-9777ba715bfc",
+          "severity": "critical"
+        },
+        "result": {
+          "observed_value": [
+            "as_of_date",
+            "comment",
+            "debt_incl_equity_and_min_interest_total",
+            "debt_total",
+            "market_cap_os",
+            "market_capitalization",
+            "measure",
+            "minority_interest_total",
+            "name",
+            "org_id",
+            "organization_perm_id",
+            "possible_reason_of_evic_change_yoy",
+            "preferred_shareholders_equity",
+            "reason_for_inclusion",
+            "ric",
+            "tr_f_evexclceadjust",
+            "year"
+          ]
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      },
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_compound_columns_to_be_unique",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column_list": [
+              "organization_perm_id",
+              "year",
+              "measure",
+              "as_of_date"
+            ]
+          },
+          "meta": {
+            "rule_id": "C06",
+            "severity": "warning",
+            "description": "one row per data point per week (else the merge multiplies rows)"
+          },
+          "id": "3d207a1f-42be-4847-9714-10166a4435b3",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 18,
+          "unexpected_count": 0,
+          "unexpected_percent": 0.0,
+          "partial_unexpected_list": [],
+          "missing_count": 0,
+          "missing_percent": 0.0,
+          "unexpected_percent_total": 0.0,
+          "unexpected_percent_nonmissing": 0.0,
+          "partial_unexpected_counts": [],
+          "partial_unexpected_index_list": [],
+          "unexpected_list": [],
+          "unexpected_index_list": [],
+          "unexpected_index_query": "df.filter(items=[], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      },
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_column_values_to_match_strftime_format",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column": "as_of_date",
+            "strftime_format": "%Y-%m-%d"
+          },
+          "meta": {
+            "rule_id": "C02",
+            "severity": "fatal",
+            "description": "as_of_date is a real date (YYYY-MM-DD)"
+          },
+          "id": "d9d87625-f8c5-429b-8b12-76cdd7166750",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 18,
+          "unexpected_count": 0,
+          "unexpected_percent": 0.0,
+          "partial_unexpected_list": [],
+          "missing_count": 0,
+          "missing_percent": 0.0,
+          "unexpected_percent_total": 0.0,
+          "unexpected_percent_nonmissing": 0.0,
+          "partial_unexpected_counts": [],
+          "partial_unexpected_index_list": [],
+          "unexpected_list": [],
+          "unexpected_index_list": [],
+          "unexpected_index_query": "df.filter(items=[], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      },
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column": "organization_perm_id"
+          },
+          "meta": {
+            "rule_id": "C03",
+            "severity": "fatal",
+            "description": "merge key organization_perm_id is filled"
+          },
+          "id": "b8e66465-8762-4949-8a42-5602d6fcf0bd",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 18,
+          "unexpected_count": 0,
+          "unexpected_percent": 0.0,
+          "partial_unexpected_list": [],
+          "partial_unexpected_counts": [],
+          "partial_unexpected_index_list": [],
+          "unexpected_list": [],
+          "unexpected_index_list": [],
+          "unexpected_index_query": "df.filter(items=[], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      },
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column": "year"
+          },
+          "meta": {
+            "rule_id": "C04",
+            "severity": "fatal",
+            "description": "merge key year is filled"
+          },
+          "id": "793cb4b7-cf44-45af-8253-0129139b3e41",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 18,
+          "unexpected_count": 0,
+          "unexpected_percent": 0.0,
+          "partial_unexpected_list": [],
+          "partial_unexpected_counts": [],
+          "partial_unexpected_index_list": [],
+          "unexpected_list": [],
+          "unexpected_index_list": [],
+          "unexpected_index_query": "df.filter(items=[], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      },
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_column_values_to_be_between",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column": "year",
+            "min_value": 2024.0,
+            "max_value": 2026.0
+          },
+          "meta": {
+            "rule_id": "C07",
+            "severity": "warning",
+            "description": "fiscal years within the EVIC test's 2024-2026 window"
+          },
+          "id": "eb90a797-de28-4b30-9658-79feed56f28e",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 18,
+          "unexpected_count": 0,
+          "unexpected_percent": 0.0,
+          "partial_unexpected_list": [],
+          "missing_count": 0,
+          "missing_percent": 0.0,
+          "unexpected_percent_total": 0.0,
+          "unexpected_percent_nonmissing": 0.0,
+          "partial_unexpected_counts": [],
+          "partial_unexpected_index_list": [],
+          "unexpected_list": [],
+          "unexpected_index_list": [],
+          "unexpected_index_query": "df.filter(items=[], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      },
+      {
+        "success": true,
+        "expectation_config": {
+          "type": "expect_column_values_to_not_be_null",
+          "kwargs": {
+            "batch_id": "evic_delta_input_contract_source-evic_delta_input_contract_asset",
+            "column": "measure"
+          },
+          "meta": {
+            "rule_id": "C05",
+            "severity": "fatal",
+            "description": "merge key measure is filled"
+          },
+          "id": "b7c8c8a0-a74b-4b0f-8654-0a93248bd4c2",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 18,
+          "unexpected_count": 0,
+          "unexpected_percent": 0.0,
+          "partial_unexpected_list": [],
+          "partial_unexpected_counts": [],
+          "partial_unexpected_index_list": [],
+          "unexpected_list": [],
+          "unexpected_index_list": [],
+          "unexpected_index_query": "df.filter(items=[], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      }
+    ],
+    "suite_name": "evic_delta_input_contract",
+    "suite_parameters": {},
+    "statistics": {
+      "evaluated_expectations": 7,
+      "successful_expectations": 7,
+      "unsuccessful_expectations": 0,
+      "success_percent": 100.0
+    },
+    "meta": {
+      "great_expectations_version": "1.24.1",
+      "batch_spec": {
+        "batch_data": "PandasDataFrame"
+      },
+      "batch_markers": {
+        "ge_load_time": "20261102T082925.582864Z",
+        "pandas_data_fingerprint": "f9f48e6a3a4c253804351ce26346aa90"
+      },
+      "active_batch_definition": {
+        "datasource_name": "evic_delta_input_contract_source",
+        "data_connector_name": "fluent",
+        "data_asset_name": "evic_delta_input_contract_asset",
+        "batch_identifiers": {
+          "dataframe": "<DATAFRAME>"
+        }
+      }
+    },
+    "id": null
+  },
+  "delta": {
+    "success": false,
+    "results": [
+      {
+        "success": false,
+        "expectation_config": {
+          "type": "expect_column_values_to_be_in_set",
+          "kwargs": {
+            "batch_id": "evic_delta_new_rows_source-evic_delta_new_rows_asset",
+            "column": "flagged_before",
+            "value_set": [
+              true
+            ]
+          },
+          "meta": {
+            "rule_id": "D01",
+            "severity": "report",
+            "description": "flagged in an earlier week (False = new this week = delta)"
+          },
+          "id": "dee5be1d-7cd0-4929-8407-6306c16c3257",
+          "severity": "critical"
+        },
+        "result": {
+          "element_count": 8,
+          "unexpected_count": 5,
+          "unexpected_percent": 62.5,
+          "partial_unexpected_list": [
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "unexpected_index_column_names": [
+            "record_key"
+          ],
+          "missing_count": 0,
+          "missing_percent": 0.0,
+          "unexpected_percent_total": 62.5,
+          "unexpected_percent_nonmissing": 62.5,
+          "partial_unexpected_counts": [
+            {
+              "value": false,
+              "count": 5
+            }
+          ],
+          "partial_unexpected_index_list": [
+            {
+              "flagged_before": false,
+              "record_key": "5000000102|2025|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000108|2025|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000109|2024|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000110|2025|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000110|2025|market_capitalization"
+            }
+          ],
+          "unexpected_list": [
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "unexpected_index_list": [
+            {
+              "flagged_before": false,
+              "record_key": "5000000102|2025|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000108|2025|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000109|2024|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000110|2025|tr_f_evexclceadjust"
+            },
+            {
+              "flagged_before": false,
+              "record_key": "5000000110|2025|market_capitalization"
+            }
+          ],
+          "unexpected_index_query": "df.filter(items=[3, 4, 5, 6, 7], axis=0)"
+        },
+        "meta": {},
+        "exception_info": {
+          "raised_exception": false,
+          "exception_traceback": null,
+          "exception_message": null
+        }
+      }
+    ],
+    "suite_name": "evic_delta_new_rows",
+    "suite_parameters": {},
+    "statistics": {
+      "evaluated_expectations": 1,
+      "successful_expectations": 0,
+      "unsuccessful_expectations": 1,
+      "success_percent": 0.0
+    },
+    "meta": {
+      "great_expectations_version": "1.24.1",
+      "batch_spec": {
+        "batch_data": "PandasDataFrame"
+      },
+      "batch_markers": {
+        "ge_load_time": "20261102T082925.755578Z",
+        "pandas_data_fingerprint": "be0f7554b6133eadd42e23de6bf76d1c"
+      },
+      "active_batch_definition": {
+        "datasource_name": "evic_delta_new_rows_source",
+        "data_connector_name": "fluent",
+        "data_asset_name": "evic_delta_new_rows_asset",
+        "batch_identifiers": {
+          "dataframe": "<DATAFRAME>"
+        }
+      }
+    },
+    "id": null
+  }
+}
