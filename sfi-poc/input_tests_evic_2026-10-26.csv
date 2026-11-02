@@ -1,0 +1,9 @@
+organization_perm_id,org_id,ric,name,year,measure,tr_f_evexclceadjust,market_cap_os,debt_incl_equity_and_min_interest_total,debt_total,minority_interest_total,preferred_shareholders_equity,market_capitalization,possible_reason_of_evic_change_yoy,reason_for_inclusion,comment
+5000000101,ORG101,ALDR.X,Alder Test Holdings,2025,tr_f_evexclceadjust,59347500000.0,43050000000.0,16297500000.0,15067500000.0,820000000.0,410000000.0,43136100000.0,Change in market cap,Variance current vs previous,No reply yet
+5000000106,ORG106,FIRT.X,Fir Test Asset Mgmt,2025,tr_f_evexclceadjust,25765500000.0,18690000000.0,7075500000.0,6541500000.0,356000000.0,178000000.0,18727400000.0,No reason found in EVIC components,YoY Outliers,No reply yet
+5000000104,ORG104,DOGW.X,Dogwood Test Capital,2025,tr_f_evexclceadjust,4921500000.0,3570000000.0,1351500000.0,1249500000.0,68000000.0,34000000.0,3577100000.0,,Top 20 with invalid,No reply yet
+5000000102,ORG102,BRCH.X,Birch Test Bank,2025,tr_f_evexclceadjust,41253800000.0,29925000000.0,11328800000.0,10473800000.0,570000000.0,285000000.0,29984800000.0,Change in debt,YoY Outliers,No reply yet
+5000000108,ORG108,HAZL.X,Hazel Test Bancorp,2025,tr_f_evexclceadjust,75704200000.0,54915000000.0,20789200000.0,19220200000.0,1046000000.0,523000000.0,55024800000.0,Change in market cap,Variance current vs previous,No reply yet
+5000000109,ORG109,IVYT.X,Ivy Test Re,2024,tr_f_evexclceadjust,4080300000.0,2958000000.0,1122300000.0,1035300000.0,58000000.0,29000000.0,2963900000.0,,EVIC Gaps,No reply yet
+5000000110,ORG110,JUNI.X,Juniper Test Trust,2025,tr_f_evexclceadjust,17949000000.0,13020000000.0,4929000000.0,4557000000.0,248000000.0,124000000.0,13046000000.0,Change in market cap,YoY Outliers,No reply yet
+5000000110,ORG110,JUNI.X,Juniper Test Trust,2025,market_capitalization,17949000000.0,13020000000.0,4929000000.0,4557000000.0,248000000.0,124000000.0,13046000000.0,Change in market cap,YoY Outliers,No reply yet

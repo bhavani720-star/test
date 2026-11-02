@@ -1,0 +1,6 @@
+organization_perm_id,org_id,ric,name,year,measure,tr_f_evexclceadjust,market_cap_os,debt_incl_equity_and_min_interest_total,debt_total,minority_interest_total,preferred_shareholders_equity,market_capitalization,possible_reason_of_evic_change_yoy,reason_for_inclusion,comment
+5000000101,ORG101,ALDR.X,Alder Test Holdings,2025,tr_f_evexclceadjust,58240500000.0,42230000000.0,16010500000.0,14780500000.0,820000000.0,410000000.0,42314500000.0,Change in market cap,Variance current vs previous,No reply yet
+5000000102,ORG102,BRCH.X,Birch Test Bank,2024,tr_f_evexclceadjust,39330000000.0,28500000000.0,10830000000.0,9975000000.0,570000000.0,285000000.0,28557000000.0,Change in debt,YoY Outliers,No reply yet
+5000000103,ORG103,CEDR.X,Cedar Test Insurance,2025,tr_f_evexclceadjust,13068600000.0,9476000000.0,3592600000.0,3316600000.0,184000000.0,92000000.0,9495000000.0,,EVIC Gaps,No reply yet
+5000000104,ORG104,DOGW.X,Dogwood Test Capital,2025,tr_f_evexclceadjust,4829700000.0,3502000000.0,1327700000.0,1225700000.0,68000000.0,34000000.0,3509000000.0,,Top 20 with invalid,No reply yet
+5000000105,ORG105,ELMT.X,Elm Test Finance,2024,tr_f_evexclceadjust,1587000000.0,1150000000.0,437000000.0,402500000.0,23000000.0,11500000.0,1152300000.0,,Datapoints previous only,delisted
