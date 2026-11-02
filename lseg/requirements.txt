@@ -1,0 +1,4 @@
+pandas>=2.2,<3        # same pin as the EVIC project until StarMine's pandas version is known
+openpyxl>=3.1         # Excel input and the QA report
+scikit-learn>=1.5     # the script trains IsolationForest models
+great_expectations>=1.4,<2   # only for gx_lseg_reported.py
