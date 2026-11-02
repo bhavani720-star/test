@@ -1,0 +1,18 @@
+script_column,source_column,comes_from,daas_target,status,used_by_script_for,note
+organization_perm_id,organization_perm_id,Universe (SDI),organization_enrichment (PermID),key,merge key,Not a TR field; ADC is queried with this list of IDs
+year,fiscal_year,ADC period of the EVIC extract,TBD,key,merge key + drop_duplicates key,Built by utils.prepaire_year_column_input_test() in the init script
+measure,measure,EVIC init script output,n/a (made by the init script),key - open,merge key,Which values can it take? Left out of the drop_duplicates key
+org_id,TR.Orgidcode,ADC ICB info extract,organization_enrichment (TBD column),assumed,drop_duplicates key + report,TR field matched by meaning
+ric,TR.PrimaryQuote,ADC ICB info extract,TBD,assumed,drop_duplicates key + report,TR.PrimaryQuote returns the RIC
+name,TR.OrganizationName,ADC ICB info extract,Party.dbo.OrganizationEnrichment.DefaultName,found,drop_duplicates key + report,Company name found in DaaS (meeting)
+tr_f_evexclceadjust,TR.F.EVexclCEAdjust,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,EVIC itself; column name is the TR code in snake case
+market_cap_os,TR.F.MktCapOutstShr,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,
+debt_incl_equity_and_min_interest_total,TR.F.DebtInclPrefEqMinIntrTot,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,TR name says preferred equity; column name says equity
+debt_total,TR.F.DebtTot,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,
+minority_interest_total,TR.F.MinIntrTot,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,
+preferred_shareholders_equity,TR.F.PrefShHoldEq,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,
+market_capitalization,TR.F.MktCap,ADC EVIC extract,Fundamentals team - under request,missing in DaaS,report only,Also used to rank the top companies for Content Ops
+possible_reason_of_evic_change_yoy,possible_reason_of_evic_change_yoy,EVIC init script output,n/a (made by the init script),open,report only,Market cap or debt change; or no reason found
+reason_for_inclusion,reason_for_inclusion,EVIC init script output,n/a (made by the init script),open,report only,Name of the init check that flagged the row
+comment,comment,EVIC init script output / Content Ops reply,n/a,open,report only,Automatic reason or "No reply yet"
+as_of_date,as_of_date,StarMine store slice date,n/a (run metadata),open,split current vs previous,Must be the same type as current_date or the script silently finds 0 rows
