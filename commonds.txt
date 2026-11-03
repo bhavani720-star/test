@@ -1,0 +1,63 @@
+# End-to-end commands for the Cloud PC
+# Run them in the VS Code terminal (PowerShell), one block at a time.
+
+
+# 1. Go to the project folder
+cd $env:USERPROFILE\Downloads\sfi-lseg-reported-thin-thread
+
+
+# 2. Check that pip is set up for LSEG Artifactory
+#    This shows only whether the file exists and its size, never your token.
+#    Length should be more than 0. If it is 0, paste the two lines from
+#    Artifactory > Set Me Up > PyPI > Pip into that file and save it.
+Get-Item $env:APPDATA\pip\pip.ini | Select-Object FullName, Length
+
+
+# 3. Create the virtual environment (only if .venv does not exist)
+if (-not (Test-Path .venv)) { python -m venv .venv }
+
+
+# 4. Install the packages from Artifactory
+#    It should end with "Successfully installed ..." or "Requirement already satisfied".
+.venv\Scripts\python -m pip install -r requirements-lock.txt
+
+
+# 5. Check the key packages
+.venv\Scripts\python -c "import pandas, sklearn, openpyxl, great_expectations as gx; print('pandas', pandas.__version__, '| sklearn', sklearn.__version__, '| GX', gx.__version__)"
+
+
+# 6. (Optional) Recreate the sample data
+.venv\Scripts\python make_sample_data.py
+
+
+# 7. Run the QA script
+#    Expected: summary_report: 24 row(s), written to
+#    output\qa_report_input_test_lseg_scope123_init_261026.xlsx
+.venv\Scripts\python run_script.py --input sample_data
+
+
+# 8. Run the Great Expectations check and compare it with the script's report
+#    Expected: "same rows" for L01 to L04 (5 / 14 / 2 / 3).
+.venv\Scripts\python gx_lseg_reported.py --input sample_data --script-report output\qa_report_input_test_lseg_scope123_init_261026.xlsx
+
+
+# 9. (Optional) Extra runs
+#    Change a setting for one run:
+.venv\Scripts\python run_script.py --input sample_data --set max_number_of_outliers=100
+
+#    Show the unsorted-input trap (Isolation Forest gives 5 rows instead of 3):
+.venv\Scripts\python run_script.py --input sample_data --shuffle-rows
+
+
+# 10. (Optional) Model output thin thread
+#     Uses the same packages, so it borrows the venv from step 3.
+#     Expected: 11 exception(s) and three Excel reports in output\2026-10-13\
+cd $env:USERPROFILE\Downloads\sfi-model-output-thin-thread
+..\sfi-lseg-reported-thin-thread\.venv\Scripts\python make_sample_data.py
+..\sfi-lseg-reported-thin-thread\.venv\Scripts\python run_checks.py --run-date 2026-10-13 --previous-run-date 2026-07-13
+
+
+# Notes
+# - .venv\Scripts\python is used instead of activating the venv, because
+#   Activate.ps1 can be blocked by the Cloud PC's script policy.
+# - Never paste the pip.ini lines into the terminal. They only go into the pip.ini file.
