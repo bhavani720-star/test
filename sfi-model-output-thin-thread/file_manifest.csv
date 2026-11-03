@@ -1,0 +1,6 @@
+file_key,folder,file_name,file_type,needed_for,platform_location,note
+model_output,model_output,model_output_scope123.csv.gz,output,coverage;yoy;d2d,Model platform > Scope 1-3 > {environment} > File store > {run_date} > model output,placeholder name: replace with the file on the input documentation page
+reported,input_data,lseg_reported_scope123.csv.gz,input,d2d,Model platform > Scope 1-3 > {environment} > File store > {run_date} > input data (from ADC),placeholder name: replace with the file on the input documentation page
+company_info,input_data,company_info.csv.gz,input,coverage;yoy;d2d,Model platform > Scope 1-3 > {environment} > File store > {run_date} > input data,placeholder name: replace with the file on the input documentation page
+s12_steps,intermediate_scope12,s12_model_steps.csv.gz,intermediate,coverage;yoy;d2d,Model platform > Scope 1-3 > {environment} > File store > {run_date} > scope 1-2 intermediate files,placeholder name: the model owner uses a subset of the scope 1-2 intermediate files
+s3_steps,intermediate_scope3,s3_model_steps.csv.gz,intermediate,coverage;yoy;d2d,Model platform > Scope 1-3 > {environment} > File store > {run_date} > scope 3 intermediate files,placeholder name: the model owner uses a subset of the scope 3 intermediate files

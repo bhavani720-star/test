@@ -1,0 +1,10 @@
+reason,status,next_step
+Potential loss in reported data,needs_input_check,Look for the input check flag and the Content Ops comment
+New reported data point,final,Send to Content Ops
+Reported value restated,final,Send to Content Ops
+Revenue change,final,Send to Content Ops
+Intensity change,final,Send to Content Ops
+Scope 3 intensity change,final,Send to Content Ops
+Method changed between years,final,Send to Content Ops
+No reported data and no revenue,final,Send to Content Ops
+Not covered yet,not_covered,Investigate manually

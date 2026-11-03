@@ -1,0 +1,2 @@
+pandas>=2.0,<3       # also runs on the Cloud PC's Anaconda (pandas 2.0.3)
+openpyxl>=3.0        # the three Excel reports
