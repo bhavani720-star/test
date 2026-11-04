@@ -1,0 +1,743 @@
+{
+  "name": "sfi.lseg_reported.input_checks",
+  "expectations": [
+    {
+      "type": "expect_company_year_to_be_in_current_extract",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot"
+        ]
+      },
+      "meta": {
+        "rule_id": "L01",
+        "check": "Datapoints previous only",
+        "measure": "N/A",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Completeness",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 110-111"
+      },
+      "id": "5c7ce6a5-5113-4612-acea-09ae5ed57446",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L01 Datapoints previous only (script lines 110-111)\n-- A company-year in the previous extract that is not in the current extract.\n-- Returns the unexpected rows. {batch} is the table that holds both extracts, one row per company, year and snapshot.\nSELECT p.record_key,\n       p.organization_perm_id,\n       p.year\nFROM {batch} AS p\nWHERE p.snapshot = 'previous'\n  AND NOT EXISTS (\n        SELECT 1\n        FROM {batch} AS c\n        WHERE c.snapshot = 'current'\n          AND c.organization_perm_id = p.organization_perm_id\n          AND c.year = p.year\n      )"
+      },
+      "meta": {
+        "rule_id": "L01",
+        "check": "Datapoints previous only",
+        "measure": "N/A",
+        "engine": "sql",
+        "data_quality_dimension": "Completeness",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 110-111"
+      },
+      "id": "76c50b92-dfd3-49df-b8d7-75047fc37438",
+      "description": "L01 Datapoints previous only, as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_change_vs_previous_extract_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope1"
+        ],
+        "min_pct_change": -66.0,
+        "max_pct_change": 200.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope1",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "37eac3b1-8058-4998-8b24-e3978b93c612",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L02 Variance current vs previous (script lines 114-136), for one measure\n-- Same company and year in both extracts; the change is above max_pct_change % or below min_pct_change %,\n-- and bigger than min_abs_change. Empty values (the script turns 0 into empty) never compare.\nSELECT c.record_key,\n       c.organization_perm_id,\n       c.year,\n       c.co2_emiss_scope1                                                  AS current_value,\n       p.co2_emiss_scope1                                                  AS previous_value,\n       c.co2_emiss_scope1 - p.co2_emiss_scope1                                    AS nominal_change,\n       (c.co2_emiss_scope1 - p.co2_emiss_scope1) * 100.0 / NULLIF(p.co2_emiss_scope1, 0) AS pct_change\nFROM {batch} AS c\nJOIN {batch} AS p\n  ON  p.organization_perm_id = c.organization_perm_id\n  AND p.year = c.year\n  AND p.snapshot = 'previous'\nWHERE c.snapshot = 'current'\n  AND ABS(c.co2_emiss_scope1 - p.co2_emiss_scope1) > 100000\n  AND (   (c.co2_emiss_scope1 - p.co2_emiss_scope1) * 100.0 / NULLIF(p.co2_emiss_scope1, 0) > 200\n       OR (c.co2_emiss_scope1 - p.co2_emiss_scope1) * 100.0 / NULLIF(p.co2_emiss_scope1, 0) < -66)"
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope1",
+        "engine": "sql",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "37d7eac0-55c5-40c0-88c2-3193227ed7b1",
+      "description": "L02 Variance current vs previous (co2_emiss_scope1), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_change_vs_previous_extract_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2"
+        ],
+        "min_pct_change": -66.0,
+        "max_pct_change": 200.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope2",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "a3dadc1d-d022-4f1a-a68a-6d0c17c5caf1",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L02 Variance current vs previous (script lines 114-136), for one measure\n-- Same company and year in both extracts; the change is above max_pct_change % or below min_pct_change %,\n-- and bigger than min_abs_change. Empty values (the script turns 0 into empty) never compare.\nSELECT c.record_key,\n       c.organization_perm_id,\n       c.year,\n       c.co2_emiss_scope2                                                  AS current_value,\n       p.co2_emiss_scope2                                                  AS previous_value,\n       c.co2_emiss_scope2 - p.co2_emiss_scope2                                    AS nominal_change,\n       (c.co2_emiss_scope2 - p.co2_emiss_scope2) * 100.0 / NULLIF(p.co2_emiss_scope2, 0) AS pct_change\nFROM {batch} AS c\nJOIN {batch} AS p\n  ON  p.organization_perm_id = c.organization_perm_id\n  AND p.year = c.year\n  AND p.snapshot = 'previous'\nWHERE c.snapshot = 'current'\n  AND ABS(c.co2_emiss_scope2 - p.co2_emiss_scope2) > 100000\n  AND (   (c.co2_emiss_scope2 - p.co2_emiss_scope2) * 100.0 / NULLIF(p.co2_emiss_scope2, 0) > 200\n       OR (c.co2_emiss_scope2 - p.co2_emiss_scope2) * 100.0 / NULLIF(p.co2_emiss_scope2, 0) < -66)"
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope2",
+        "engine": "sql",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "8466dd9d-f519-4be2-9c99-818a500e7c6e",
+      "description": "L02 Variance current vs previous (co2_emiss_scope2), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_change_vs_previous_extract_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2_marketbased"
+        ],
+        "min_pct_change": -66.0,
+        "max_pct_change": 200.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope2_marketbased",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "f6a7bf5c-ca49-4371-801a-750fb020d84b",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L02 Variance current vs previous (script lines 114-136), for one measure\n-- Same company and year in both extracts; the change is above max_pct_change % or below min_pct_change %,\n-- and bigger than min_abs_change. Empty values (the script turns 0 into empty) never compare.\nSELECT c.record_key,\n       c.organization_perm_id,\n       c.year,\n       c.co2_emiss_scope2_marketbased                                                  AS current_value,\n       p.co2_emiss_scope2_marketbased                                                  AS previous_value,\n       c.co2_emiss_scope2_marketbased - p.co2_emiss_scope2_marketbased                                    AS nominal_change,\n       (c.co2_emiss_scope2_marketbased - p.co2_emiss_scope2_marketbased) * 100.0 / NULLIF(p.co2_emiss_scope2_marketbased, 0) AS pct_change\nFROM {batch} AS c\nJOIN {batch} AS p\n  ON  p.organization_perm_id = c.organization_perm_id\n  AND p.year = c.year\n  AND p.snapshot = 'previous'\nWHERE c.snapshot = 'current'\n  AND ABS(c.co2_emiss_scope2_marketbased - p.co2_emiss_scope2_marketbased) > 100000\n  AND (   (c.co2_emiss_scope2_marketbased - p.co2_emiss_scope2_marketbased) * 100.0 / NULLIF(p.co2_emiss_scope2_marketbased, 0) > 200\n       OR (c.co2_emiss_scope2_marketbased - p.co2_emiss_scope2_marketbased) * 100.0 / NULLIF(p.co2_emiss_scope2_marketbased, 0) < -66)"
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope2_marketbased",
+        "engine": "sql",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "777dd242-a1eb-4b18-beba-5e1bc02e66e4",
+      "description": "L02 Variance current vs previous (co2_emiss_scope2_marketbased), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_change_vs_previous_extract_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2_locbased"
+        ],
+        "min_pct_change": -66.0,
+        "max_pct_change": 200.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope2_locbased",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "d5297611-48c3-4445-9701-ca4f511b00a4",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L02 Variance current vs previous (script lines 114-136), for one measure\n-- Same company and year in both extracts; the change is above max_pct_change % or below min_pct_change %,\n-- and bigger than min_abs_change. Empty values (the script turns 0 into empty) never compare.\nSELECT c.record_key,\n       c.organization_perm_id,\n       c.year,\n       c.co2_emiss_scope2_locbased                                                  AS current_value,\n       p.co2_emiss_scope2_locbased                                                  AS previous_value,\n       c.co2_emiss_scope2_locbased - p.co2_emiss_scope2_locbased                                    AS nominal_change,\n       (c.co2_emiss_scope2_locbased - p.co2_emiss_scope2_locbased) * 100.0 / NULLIF(p.co2_emiss_scope2_locbased, 0) AS pct_change\nFROM {batch} AS c\nJOIN {batch} AS p\n  ON  p.organization_perm_id = c.organization_perm_id\n  AND p.year = c.year\n  AND p.snapshot = 'previous'\nWHERE c.snapshot = 'current'\n  AND ABS(c.co2_emiss_scope2_locbased - p.co2_emiss_scope2_locbased) > 100000\n  AND (   (c.co2_emiss_scope2_locbased - p.co2_emiss_scope2_locbased) * 100.0 / NULLIF(p.co2_emiss_scope2_locbased, 0) > 200\n       OR (c.co2_emiss_scope2_locbased - p.co2_emiss_scope2_locbased) * 100.0 / NULLIF(p.co2_emiss_scope2_locbased, 0) < -66)"
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "co2_emiss_scope2_locbased",
+        "engine": "sql",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "5618922f-a0e3-419a-965e-e3ae2de170e8",
+      "description": "L02 Variance current vs previous (co2_emiss_scope2_locbased), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_change_vs_previous_extract_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "total_upstream_scope3"
+        ],
+        "min_pct_change": -66.0,
+        "max_pct_change": 200.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "total_upstream_scope3",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "89cbd1df-3784-497b-ab57-be131f52f61e",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L02 Variance current vs previous (script lines 114-136), for one measure\n-- Same company and year in both extracts; the change is above max_pct_change % or below min_pct_change %,\n-- and bigger than min_abs_change. Empty values (the script turns 0 into empty) never compare.\nSELECT c.record_key,\n       c.organization_perm_id,\n       c.year,\n       c.total_upstream_scope3                                                  AS current_value,\n       p.total_upstream_scope3                                                  AS previous_value,\n       c.total_upstream_scope3 - p.total_upstream_scope3                                    AS nominal_change,\n       (c.total_upstream_scope3 - p.total_upstream_scope3) * 100.0 / NULLIF(p.total_upstream_scope3, 0) AS pct_change\nFROM {batch} AS c\nJOIN {batch} AS p\n  ON  p.organization_perm_id = c.organization_perm_id\n  AND p.year = c.year\n  AND p.snapshot = 'previous'\nWHERE c.snapshot = 'current'\n  AND ABS(c.total_upstream_scope3 - p.total_upstream_scope3) > 100000\n  AND (   (c.total_upstream_scope3 - p.total_upstream_scope3) * 100.0 / NULLIF(p.total_upstream_scope3, 0) > 200\n       OR (c.total_upstream_scope3 - p.total_upstream_scope3) * 100.0 / NULLIF(p.total_upstream_scope3, 0) < -66)"
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "total_upstream_scope3",
+        "engine": "sql",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "733634ca-ab03-4c24-8e90-084fe5c4df74",
+      "description": "L02 Variance current vs previous (total_upstream_scope3), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_change_vs_previous_extract_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "total_downstream_scope3"
+        ],
+        "min_pct_change": -66.0,
+        "max_pct_change": 200.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "total_downstream_scope3",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "962797e1-c219-464e-bedb-35b6f0ef4c34",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L02 Variance current vs previous (script lines 114-136), for one measure\n-- Same company and year in both extracts; the change is above max_pct_change % or below min_pct_change %,\n-- and bigger than min_abs_change. Empty values (the script turns 0 into empty) never compare.\nSELECT c.record_key,\n       c.organization_perm_id,\n       c.year,\n       c.total_downstream_scope3                                                  AS current_value,\n       p.total_downstream_scope3                                                  AS previous_value,\n       c.total_downstream_scope3 - p.total_downstream_scope3                                    AS nominal_change,\n       (c.total_downstream_scope3 - p.total_downstream_scope3) * 100.0 / NULLIF(p.total_downstream_scope3, 0) AS pct_change\nFROM {batch} AS c\nJOIN {batch} AS p\n  ON  p.organization_perm_id = c.organization_perm_id\n  AND p.year = c.year\n  AND p.snapshot = 'previous'\nWHERE c.snapshot = 'current'\n  AND ABS(c.total_downstream_scope3 - p.total_downstream_scope3) > 100000\n  AND (   (c.total_downstream_scope3 - p.total_downstream_scope3) * 100.0 / NULLIF(p.total_downstream_scope3, 0) > 200\n       OR (c.total_downstream_scope3 - p.total_downstream_scope3) * 100.0 / NULLIF(p.total_downstream_scope3, 0) < -66)"
+      },
+      "meta": {
+        "rule_id": "L02",
+        "check": "Variance current vs previous",
+        "measure": "total_downstream_scope3",
+        "engine": "sql",
+        "data_quality_dimension": "Consistency",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 114-136"
+      },
+      "id": "5d417dc0-8781-4ff8-9b79-cc187de44318",
+      "description": "L02 Variance current vs previous (total_downstream_scope3), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope1"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope1",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "e4579e72-275f-4802-9d40-8edecd83db02",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L03 YoY Outliers (script lines 146-169), for one measure\n-- In the current extract, the change from the same company's row before (by year) is above max_pct_change % or\n-- below min_pct_change %, and bigger than min_abs_change. LAG works in SQLite, Spark SQL and SQL Server.\nWITH ordered AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           co2_emiss_scope1                                                                 AS value,\n           LAG(co2_emiss_scope1) OVER (PARTITION BY organization_perm_id ORDER BY year)     AS value_year_before\n    FROM {batch}\n    WHERE snapshot = 'current'\n),\nchanges AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           value,\n           value_year_before,\n           value - value_year_before                                       AS nominal_change,\n           (value - value_year_before) * 100.0 / NULLIF(value_year_before, 0) AS pct_change\n    FROM ordered\n)\nSELECT record_key, organization_perm_id, year, value, value_year_before, nominal_change, pct_change\nFROM changes\nWHERE ABS(nominal_change) > 100000\n  AND (pct_change > 500 OR pct_change < -83)\n  AND pct_change <> -100"
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope1",
+        "engine": "sql",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "4aa67c0d-39db-472f-8675-2e2f895092a5",
+      "description": "L03 YoY Outliers (co2_emiss_scope1), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope2",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "63167f2b-186b-4b48-8156-aed96d463057",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L03 YoY Outliers (script lines 146-169), for one measure\n-- In the current extract, the change from the same company's row before (by year) is above max_pct_change % or\n-- below min_pct_change %, and bigger than min_abs_change. LAG works in SQLite, Spark SQL and SQL Server.\nWITH ordered AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           co2_emiss_scope2                                                                 AS value,\n           LAG(co2_emiss_scope2) OVER (PARTITION BY organization_perm_id ORDER BY year)     AS value_year_before\n    FROM {batch}\n    WHERE snapshot = 'current'\n),\nchanges AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           value,\n           value_year_before,\n           value - value_year_before                                       AS nominal_change,\n           (value - value_year_before) * 100.0 / NULLIF(value_year_before, 0) AS pct_change\n    FROM ordered\n)\nSELECT record_key, organization_perm_id, year, value, value_year_before, nominal_change, pct_change\nFROM changes\nWHERE ABS(nominal_change) > 100000\n  AND (pct_change > 500 OR pct_change < -83)\n  AND pct_change <> -100"
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope2",
+        "engine": "sql",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "a43e87ab-3a0b-46d5-aed0-e114293d22a7",
+      "description": "L03 YoY Outliers (co2_emiss_scope2), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2_marketbased"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope2_marketbased",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "e2fd7bc7-9118-47e1-a187-852a4925a92c",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L03 YoY Outliers (script lines 146-169), for one measure\n-- In the current extract, the change from the same company's row before (by year) is above max_pct_change % or\n-- below min_pct_change %, and bigger than min_abs_change. LAG works in SQLite, Spark SQL and SQL Server.\nWITH ordered AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           co2_emiss_scope2_marketbased                                                                 AS value,\n           LAG(co2_emiss_scope2_marketbased) OVER (PARTITION BY organization_perm_id ORDER BY year)     AS value_year_before\n    FROM {batch}\n    WHERE snapshot = 'current'\n),\nchanges AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           value,\n           value_year_before,\n           value - value_year_before                                       AS nominal_change,\n           (value - value_year_before) * 100.0 / NULLIF(value_year_before, 0) AS pct_change\n    FROM ordered\n)\nSELECT record_key, organization_perm_id, year, value, value_year_before, nominal_change, pct_change\nFROM changes\nWHERE ABS(nominal_change) > 100000\n  AND (pct_change > 500 OR pct_change < -83)\n  AND pct_change <> -100"
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope2_marketbased",
+        "engine": "sql",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "065c67c7-4e06-473a-8dd2-c3aece0b259e",
+      "description": "L03 YoY Outliers (co2_emiss_scope2_marketbased), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2_locbased"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope2_locbased",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "75edd8d2-0ba1-4b5b-99cd-d6943e7c9e65",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L03 YoY Outliers (script lines 146-169), for one measure\n-- In the current extract, the change from the same company's row before (by year) is above max_pct_change % or\n-- below min_pct_change %, and bigger than min_abs_change. LAG works in SQLite, Spark SQL and SQL Server.\nWITH ordered AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           co2_emiss_scope2_locbased                                                                 AS value,\n           LAG(co2_emiss_scope2_locbased) OVER (PARTITION BY organization_perm_id ORDER BY year)     AS value_year_before\n    FROM {batch}\n    WHERE snapshot = 'current'\n),\nchanges AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           value,\n           value_year_before,\n           value - value_year_before                                       AS nominal_change,\n           (value - value_year_before) * 100.0 / NULLIF(value_year_before, 0) AS pct_change\n    FROM ordered\n)\nSELECT record_key, organization_perm_id, year, value, value_year_before, nominal_change, pct_change\nFROM changes\nWHERE ABS(nominal_change) > 100000\n  AND (pct_change > 500 OR pct_change < -83)\n  AND pct_change <> -100"
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "co2_emiss_scope2_locbased",
+        "engine": "sql",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "fbb12bc7-851d-4c40-9021-120f245f444f",
+      "description": "L03 YoY Outliers (co2_emiss_scope2_locbased), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "total_upstream_scope3"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "total_upstream_scope3",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "63331861-7e56-478e-ab5c-0b142f4f08fc",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L03 YoY Outliers (script lines 146-169), for one measure\n-- In the current extract, the change from the same company's row before (by year) is above max_pct_change % or\n-- below min_pct_change %, and bigger than min_abs_change. LAG works in SQLite, Spark SQL and SQL Server.\nWITH ordered AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           total_upstream_scope3                                                                 AS value,\n           LAG(total_upstream_scope3) OVER (PARTITION BY organization_perm_id ORDER BY year)     AS value_year_before\n    FROM {batch}\n    WHERE snapshot = 'current'\n),\nchanges AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           value,\n           value_year_before,\n           value - value_year_before                                       AS nominal_change,\n           (value - value_year_before) * 100.0 / NULLIF(value_year_before, 0) AS pct_change\n    FROM ordered\n)\nSELECT record_key, organization_perm_id, year, value, value_year_before, nominal_change, pct_change\nFROM changes\nWHERE ABS(nominal_change) > 100000\n  AND (pct_change > 500 OR pct_change < -83)\n  AND pct_change <> -100"
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "total_upstream_scope3",
+        "engine": "sql",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "f2bc8752-31a0-4096-a86c-f46cb250fd43",
+      "description": "L03 YoY Outliers (total_upstream_scope3), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_be_within_limits",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "total_downstream_scope3"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0,
+        "min_abs_change": 100000.0
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "total_downstream_scope3",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "eb2c9746-432d-4e68-81d0-46ac4eefd323",
+      "severity": "warning"
+    },
+    {
+      "type": "unexpected_rows_expectation",
+      "kwargs": {
+        "unexpected_rows_query": "-- L03 YoY Outliers (script lines 146-169), for one measure\n-- In the current extract, the change from the same company's row before (by year) is above max_pct_change % or\n-- below min_pct_change %, and bigger than min_abs_change. LAG works in SQLite, Spark SQL and SQL Server.\nWITH ordered AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           total_downstream_scope3                                                                 AS value,\n           LAG(total_downstream_scope3) OVER (PARTITION BY organization_perm_id ORDER BY year)     AS value_year_before\n    FROM {batch}\n    WHERE snapshot = 'current'\n),\nchanges AS (\n    SELECT record_key,\n           organization_perm_id,\n           year,\n           value,\n           value_year_before,\n           value - value_year_before                                       AS nominal_change,\n           (value - value_year_before) * 100.0 / NULLIF(value_year_before, 0) AS pct_change\n    FROM ordered\n)\nSELECT record_key, organization_perm_id, year, value, value_year_before, nominal_change, pct_change\nFROM changes\nWHERE ABS(nominal_change) > 100000\n  AND (pct_change > 500 OR pct_change < -83)\n  AND pct_change <> -100"
+      },
+      "meta": {
+        "rule_id": "L03",
+        "check": "YoY Outliers",
+        "measure": "total_downstream_scope3",
+        "engine": "sql",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 146-169"
+      },
+      "id": "4f230b18-01b8-4f6f-a2e7-256bcb3ee285",
+      "description": "L03 YoY Outliers (total_downstream_scope3), as SQL",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_not_be_isolation_forest_outlier",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope1"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0
+      },
+      "meta": {
+        "rule_id": "L04",
+        "check": "Iso F YoY current",
+        "measure": "co2_emiss_scope1",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 202-279"
+      },
+      "id": "34af5813-d28e-4aea-b8c9-607c959c40e5",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_not_be_isolation_forest_outlier",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0
+      },
+      "meta": {
+        "rule_id": "L04",
+        "check": "Iso F YoY current",
+        "measure": "co2_emiss_scope2",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 202-279"
+      },
+      "id": "8d2e0505-3623-4d1f-b8e0-f4e98d95c775",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_not_be_isolation_forest_outlier",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2_marketbased"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0
+      },
+      "meta": {
+        "rule_id": "L04",
+        "check": "Iso F YoY current",
+        "measure": "co2_emiss_scope2_marketbased",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 202-279"
+      },
+      "id": "670d6aa5-2e96-40a3-88d3-44bd20a3f741",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_not_be_isolation_forest_outlier",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "co2_emiss_scope2_locbased"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0
+      },
+      "meta": {
+        "rule_id": "L04",
+        "check": "Iso F YoY current",
+        "measure": "co2_emiss_scope2_locbased",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 202-279"
+      },
+      "id": "26fba4c6-0102-4ddc-948f-2d82873219c1",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_not_be_isolation_forest_outlier",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "total_upstream_scope3"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0
+      },
+      "meta": {
+        "rule_id": "L04",
+        "check": "Iso F YoY current",
+        "measure": "total_upstream_scope3",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 202-279"
+      },
+      "id": "6f62dee2-b066-4d45-9c65-1e4bf6801c75",
+      "severity": "warning"
+    },
+    {
+      "type": "expect_year_on_year_change_to_not_be_isolation_forest_outlier",
+      "kwargs": {
+        "column_list": [
+          "organization_perm_id",
+          "year",
+          "snapshot",
+          "total_downstream_scope3"
+        ],
+        "min_pct_change": -83.0,
+        "max_pct_change": 500.0
+      },
+      "meta": {
+        "rule_id": "L04",
+        "check": "Iso F YoY current",
+        "measure": "total_downstream_scope3",
+        "engine": "gx_custom",
+        "data_quality_dimension": "Accuracy",
+        "domain": "SFI",
+        "stage": "lseg_reported_input",
+        "source": "input_test_lseg_reported_task.py lines 202-279"
+      },
+      "id": "b1e7b3b3-7582-4394-9de9-91625483a1ee",
+      "severity": "warning"
+    }
+  ],
+  "meta": {
+    "built_from": "input_test_lseg_reported_task.py",
+    "domain": "SFI",
+    "great_expectations_version": "1.24.1",
+    "stage": "lseg_reported_input"
+  },
+  "notes": null
+}
