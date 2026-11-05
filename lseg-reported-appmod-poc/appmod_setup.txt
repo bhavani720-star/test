@@ -1,0 +1,125 @@
+LSEG reported input rules: App Mod set-up
+==========================================
+
+Everything to type or paste into App Mod (Application Discovery & Modernization, project SFI POC),
+in the order of the walkthrough: application, 3 prompts, 1 template, then Generate Spec & Design.
+
+
+1. APPLICATION  (Applications > Add Application > Upload ZIP)
+-------------------------------------------------------------
+Name:
+LSEG Reported Input Rules GX POC
+
+Description (keep it short: a long description makes the upload fail):
+SFI model management input test for LSEG reported scope 1-3 emissions and its Great Expectations version: the script's 4 checks as custom GX rules and SQL rules, with sample data. Goal: a rule-by-rule view of GX migration feasibility.
+
+ZIP file:
+lseg_reported_input_rules_gx_poc.zip
+
+
+2. PROMPTS  (FS Prompt Library > Add)
+-------------------------------------
+For all three:
+  Pipeline: CHAT
+  Prompt hierarchy: Project level (SFI POC)
+  Template type: LLM
+  Project archetype: Modernization requirement analysis
+  Tech stack: Python
+  Examples: rule-by-rule GX mapping, GX migration feasibility
+
+--- Prompt 1 -------------------------------------------------------------------------------------------------
+
+Prompt command name:
+sfi-lseg-reported-rules-introduction-and-goals
+
+Description:
+Summarise what the LSEG reported scope 1-3 input test does and list every rule: where it is implemented, inputs, logic, thresholds and outputs, supported by repository evidence.
+
+Template:
+# Introduction and Goals
+
+## Mandatory rules
+1. Only input: the application source code repository is the only evidence. Do not rely on external or assumed context.
+2. Evidence first: for every finding, cite the file path and the narrowest locator (function, line range, SQL file or rule id).
+3. Label every claim as Fact, Inference or Unknown. Never invent thresholds, columns or results.
+4. Keep the original script (script/input_test_lseg_reported_task.py) and its Great Expectations version (qc_rules/, gx_lseg_reported.py, author_suite.py, expectations/) apart, and say which one each finding is about.
+5. Describe what the code does. Do not fix or rewrite it.
+
+## What to produce
+1. Summary, 5 lines at most: what the input test checks, on which inputs, and who uses the result.
+2. Inputs: one table with a row per input: name, the file or function that supplies it, the columns used.
+3. Rules overview: one table with a row per rule the script applies (each check, the data preparation steps, the prioritisation and the report): rule id, name, where it is implemented (file and lines), the logic in one sentence, thresholds and where they come from, the output (report sheet).
+4. Settings: one table with every setting in the script's metadata and its value.
+5. Outputs: the report sheets and their columns.
+6. Open questions: what the code does not answer, as a numbered list.
+
+--- Prompt 2 -------------------------------------------------------------------------------------------------
+
+Prompt command name:
+sfi-lseg-reported-rule-by-rule-gx-mapping
+
+Description:
+For each rule of the LSEG reported input test, show the script rule next to its Great Expectations version and whether it migrates fully, partially or not, with the reason.
+
+Template:
+# Rule by Rule GX Mapping
+
+## Mandatory rules
+1. Only input: the application source code repository is the only evidence. Do not rely on external or assumed context.
+2. Evidence first: for every finding, cite the file path and the narrowest locator (function, line range, SQL file or rule id).
+3. Label every claim as Fact, Inference or Unknown. Never invent thresholds, columns or results.
+4. A rule counts as migrated only if the repository holds its Great Expectations version: a built-in expectation, a custom expectation in qc_rules/custom_expectations.py, or a SQL rule in qc_rules/sql/. Otherwise mark it Not migrated.
+5. Describe what the code does. Do not fix or rewrite it.
+
+## What to produce
+1. Rule mapping: one table with a row per rule of the original script and these columns, left to right:
+   Rule id | Script rule: name, file and lines, logic, thresholds | Great Expectations version: expectation type or SQL file, parameters | Built-in, custom or SQL | Migration: Fully, Partially or Not | Reason
+2. Input contract: the rules that exist only in the Great Expectations version, and what the script does today when that input problem happens.
+3. Differences: every place where the Great Expectations version behaves differently from the script (order of steps, sorting, a check that flags nothing), with file and lines for both.
+4. Evidence of equal results: what the repository shows, for example the sample data and the comparison step in gx_lseg_reported.py. Do not claim a result the code does not show.
+
+--- Prompt 3 -------------------------------------------------------------------------------------------------
+
+Prompt command name:
+sfi-lseg-reported-gx-migration-feasibility
+
+Description:
+Assess how ready each rule of the LSEG reported input test is to move to Great Expectations on the QC platform, with blockers and open questions, separating facts from proposals.
+
+Template:
+# GX Migration Feasibility
+
+## Mandatory rules
+1. Only input: the application source code repository is the only evidence. Do not rely on external or assumed context.
+2. Evidence first: for every finding, cite the file path and the narrowest locator (function, line range, SQL file or rule id).
+3. Label every claim as Fact, Inference or Unknown, and keep proposals apart from facts.
+4. Feasible: the rule's logic maps cleanly onto a built-in Great Expectations expectation or a simple custom expectation, with no unresolved blocker. Partially feasible: part of the logic needs a step outside Great Expectations (pandas, a model) or a decision. Not feasible: it cannot be written as a Great Expectations rule.
+5. Describe what the code does. Do not fix or rewrite it.
+
+## What to produce
+1. Feasibility matrix: one table with a row per rule: rule id, script file and lines, target Great Expectations state (expectation type or SQL rule), Feasible, Partially feasible or Not feasible, reason, blocker.
+2. Steps that stay outside Great Expectations (data preparation, the Isolation Forest model, prioritisation, the Excel report) and why.
+3. What the QC platform needs to run the rules: packages, the custom expectation classes to import, the data source type (pandas, SQL or Spark).
+4. Blockers and open questions for model management, as a numbered list.
+5. Recommended next steps, labelled as proposals.
+
+
+3. TEMPLATE  (Manage Templates > Spec & Design > Create New Template)
+---------------------------------------------------------------------
+Template name:
+lseg_reported_input_rules_gx
+
+Keep 3 sections in the Document Outline (delete the others). Each one: Prompt source = Custom Prompt > Choose Prompt.
+
+Section name                 Sub section name     Prompt
+Introduction and Goals       rules overview       sfi-lseg-reported-rules-introduction-and-goals
+Rule by Rule GX Mapping      rule mapping         sfi-lseg-reported-rule-by-rule-gx-mapping
+GX Migration Feasibility     feasibility matrix   sfi-lseg-reported-gx-migration-feasibility
+
+Then Save Changes.
+
+
+4. GENERATE  (open the application > Generate Spec & Design)
+------------------------------------------------------------
+Entire Application > Select Template > lseg_reported_input_rules_gx > View Specs.
+If a section misses what you need, use Refine with AI; each refinement makes a new version.
