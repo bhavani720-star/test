@@ -1,0 +1,1 @@
+For each rule of the LSEG reported input test, show the script rule next to its Great Expectations version and whether it migrates fully, partially or not, with the reason.

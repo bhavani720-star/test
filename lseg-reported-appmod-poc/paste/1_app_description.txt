@@ -1,0 +1,1 @@
+SFI model management input test for LSEG reported scope 1-3 emissions and its Great Expectations version: the script's 4 checks as custom GX rules and SQL rules, with sample data. Goal: a rule-by-rule view of GX migration feasibility.

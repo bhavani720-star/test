@@ -1,0 +1,1 @@
+Summarise what the LSEG reported scope 1-3 input test does and list every rule: where it is implemented, inputs, logic, thresholds and outputs, supported by repository evidence.

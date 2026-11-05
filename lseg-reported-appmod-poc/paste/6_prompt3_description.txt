@@ -1,0 +1,1 @@
+Assess how ready each rule of the LSEG reported input test is to move to Great Expectations on the QC platform, with blockers and open questions, separating facts from proposals.
